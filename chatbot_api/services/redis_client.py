@@ -128,3 +128,20 @@ def set_session_ttl(chat_id: str, ttl_seconds: int = 3600):
     r = get_redis_client()
     r.expire(get_session_key(chat_id), ttl_seconds)
     logger.info(f"⏰ TTL de {ttl_seconds}s definido para sessão de {chat_id}")
+
+#MESSAGE_DUPLICATE:
+
+def check_and_set_message_id(message_id: str) -> bool:
+    """
+    Verifica se o ID da mensagem já foi processado.
+    Se não, armazena o ID e retorna True. O ID expira em 60 segundos (TTL).
+
+    :param message_id: O ID único da mensagem.
+    :return: True se a mensagem é NOVA, False se for DUPLICADA.
+    """
+    r = get_redis_client()
+    key = f"processed_msg:{message_id}"
+    # SET NX (Set if Not eXists) e EX (Expire time in seconds)
+    # Se o SET for bem-sucedido (o ID é novo), ele retorna 1. Se o ID já existe, retorna 0.
+    is_new = r.set(key, 1, ex=60, nx=True)
+    return is_new is not None # Se for 'None', é porque já existia (duplicado)

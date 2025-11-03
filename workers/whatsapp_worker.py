@@ -5,7 +5,6 @@ Worker independente para processar fila do WhatsApp - VERSÃO CORRIGIDA
 import os
 import sys
 import logging
-import redis
 import django
 
 # Configura Django
@@ -19,6 +18,7 @@ from chatbot_api.services.redis_client import (
     publish_new_user, enqueue_user, get_redis_client
 )
 from chatbot_api.services.waha_api import Waha
+from chatbot_api.services.ia_service import agent_register
 
 # Configurações
 REDIS_CONFIG = {
@@ -41,11 +41,12 @@ class WhatsAppWorker:
         self.redis_client = None
         self.setup_connections()
         self.redis_client = get_redis_client()
+        self.agent_register = agent_register()
         
     def setup_connections(self):
         """Estabelece conexões com Redis e WAHA API"""
         try:
-            # 🔥 CORREÇÃO: Usa a função do service padronizada
+            # CORREÇÃO: Usa a função do service padronizada
             self.redis_client = get_redis_client()
             self.redis_client.ping()
             
@@ -65,16 +66,14 @@ class WhatsAppWorker:
             
             # Futuro invoke
             response = self.generate_response(chat_id, history)
-            logger.info(f"Resposta gerada: {response}")
             
             # ENVIA RESPOSTA via WAHA
             waha_api.send_whatsapp_message(chat_id, response)
-            logger.info(f"Resposta enviada via WAHA: {chat_id}")
+            logger.info(f"Resposta gerada e enviada via WAHA: {chat_id}")
             
             # SALVA RESPOSTA NO HISTÓRICO
             add_message_to_history(chat_id, "Bot", response)
-            
-            logger.info(f"Processamento concluído para: {chat_id}")
+
             
         except Exception as e:
             logger.error(f"❌ Erro ao processar {chat_id}: {e}", exc_info=True)
@@ -88,32 +87,17 @@ class WhatsAppWorker:
 
     def generate_response(self, chat_id: str, history: list) -> str:
         """Gera resposta baseada no histórico"""
-        # Lógica simples - FUTURO: substituir por LLM
-        user_messages = [msg for msg in history if "[User]:" in msg]
+        history_str = "\n".join(history)
+        logger.info(f"{history_str}")
         
-        # Simulação de logica (Futura implementação agente de ia com Groq)
-        if not user_messages:
-            return "Olá! Em que posso ajudar?"
-            
-        # CORREÇÃO: Pegar a ÚLTIMA mensagem do usuário
-        last_user_message = user_messages[-1].lower() if user_messages else ""
-        
-        if "pedido" in last_user_message:
-            return "Olá! Verifiquei seu pedido e ele está em processamento. Previsão de entrega: 2 dias úteis."
-        elif "preço" in last_user_message or "valor" in last_user_message:
-            return "Posso ajudar com informações de preços! Nosso atendente especializado entrará em contato."
-        elif "obrigado" in last_user_message or "obrigada" in last_user_message:
-            return "Por nada! Estamos aqui para ajudar. Precisa de mais alguma coisa?"
-        else:
-            return "Obrigado por entrar em contato! Estou transferindo você para nosso atendente especializado que responderá em instantes."
+        response = self.agent_register.gerar_resposta_simples(message=history_str)
+        logger.info(f"Resposta generate_ia enviada via WAHA: {response}")
+        return response
 
     def listen_queue(self):
         """Fica escutando notificações da fila via Redis Pub/Sub"""
-        logger.info("🔊 Iniciando worker - Escutando fila Pub/Sub...")
-        
         pubsub = self.redis_client.pubsub()
         pubsub.subscribe("new_user_queue")
-        
         for message in pubsub.listen():
             if message['type'] == 'message':
                 chat_id = message['data']

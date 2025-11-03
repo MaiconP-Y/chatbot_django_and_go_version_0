@@ -20,6 +20,7 @@ services:
     depends_on:
       - db
       - redis
+      - waha
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       DEBUG: ${DEBUG}
@@ -34,6 +35,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_DB: 0
+      WEBHOOK_HMAC_SECRET: ${WEBHOOK_HMAC_SECRET}
     env_file:
       - .env
     volumes:
@@ -45,6 +47,7 @@ services:
     depends_on:
       - redis
       - django-web
+      - waha
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -64,8 +67,13 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - WHATSAPP_START_SESSION=default
-      - WHATSAPP_RESTART_ALL_SESSIONS=true
+      - WAHA_DASHBOARD_ENABLED=true
+      - WAHA_API_KEY=${WAHA_API_KEY}
+      - WAHA_SESSION_CONFIG_IGNORE_STATUS=true
+      - WAHA_SESSION_CONFIG_IGNORE_GROUPS=true
+      - WAHA_SESSION_CONFIG_IGNORE_CHANNELS=true
+      - WAHA_SESSION_CONFIG_IGNORE_BROADCAST=true
+      - WHATSAPP_HOOK_HMAC_KEY=${WEBHOOK_HMAC_SECRET}
     volumes:
       - ./waha_sessions:/app/.sessions
     env_file:

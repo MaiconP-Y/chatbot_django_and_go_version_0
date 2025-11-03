@@ -1,5 +1,5 @@
 # Virtual Environment
-venv/
+.venv/
 
 # WhatsApp Sessions  
 waha_sessions/
