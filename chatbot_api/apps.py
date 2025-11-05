@@ -13,29 +13,41 @@ class ChatbotApiConfig(AppConfig):
     def ready(self):
         """
         Método chamado quando o Django está totalmente inicializado.
-        Inicia um thread para configurar o WAHA com HMAC.
+        Inicia um thread para garantir que a sessão do WAHA esteja ativa
+        e que a chave HMAC esteja configurada no CLIENTE WAHA.
         """
+
+        # O Django precisa saber a chave HMAC para que o WAHA possa usá-la.
+        # Ele não precisa saber a URL do webhook, que é configurada no Docker Compose.
 
         def configure_waha_session():
             from .services.waha_api import Waha
             
             waha = Waha()
-            hmac_key = os.environ.get("WEBHOOK_HMAC_SECRET")
+            
+            # A chave continua sendo WEBHOOK_HMAC_SECRET, usada tanto pelo Go quanto pelo WAHA
+            hmac_key = os.environ.get("WEBHOOK_HMAC_SECRET") 
             
             if not hmac_key:
-                logger.error("❌ WEBHOOK_HMAC_SECRET não encontrado. Não é possível configurar o WAHA.")
+                # O ambiente do Django (django-web) precisa dessa chave, assim como o Go.
+                logger.error("❌ WEBHOOK_HMAC_SECRET não encontrado. Não é possível configurar o cliente WAHA para enviar mensagens.")
                 return
 
             max_retries = 10
             delay_seconds = 8
             
-            logger.info(f"⏳ Tentando configurar WAHA com HMAC (máx. {max_retries}x)")
+            # O nome da função deve refletir que ela está ativando o WAHA, 
+            # não necessariamente configurando a URL do webhook (que agora é via Docker).
+            logger.info(f"⏳ Tentando ATIVAR e configurar HMAC do WAHA (máx. {max_retries}x)")
 
             for attempt in range(1, max_retries + 1):
+                # O nome da função está bom, mas é vital que o Waha.start_session_with_hmac
+                # apenas garanta que a chave HMAC está definida no cliente WAHA, e tente 
+                # subir a sessão (start session), se ainda não estiver ativa.
                 success = waha.start_session_with_hmac(hmac_key)
                 
                 if success:
-                    logger.info("✅ Configuração HMAC do WAHA concluída com sucesso.")
+                    logger.info("✅ Ativação da sessão e configuração HMAC do WAHA concluídas com sucesso.")
                     return
                 else:
                     logger.warning(f" Tentativa {attempt}/{max_retries} falhou. Aguardando {delay_seconds}s...")
@@ -44,4 +56,5 @@ class ChatbotApiConfig(AppConfig):
             logger.error("❌ Falha crítica: Não foi possível configurar a sessão do WAHA após todas as tentativas.")
 
         # Inicia a função de configuração em um novo thread
+        # Esta é a melhor prática para não travar a inicialização do Django.
         threading.Thread(target=configure_waha_session, daemon=True).start()

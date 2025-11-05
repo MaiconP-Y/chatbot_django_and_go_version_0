@@ -67,14 +67,12 @@ class Waha():
             'X-Api-Key': api_key
         }
         
-        webhook_url = os.environ.get("WHATSAPP_HOOK_URL", "http://django-web:8000/api/whatsapp/webhook/")
+        webhook_url = os.environ.get("WHATSAPP_HOOK_URL")
         hook_events = os.environ.get("WHATSAPP_HOOK_EVENTS", "message")
         
         # NOVO PAYLOAD CONFORME SUA DOCUMENTAÇÃO (apenas o bloco 'config')
         payload = {    
             "config": {
-                # Opcional: manter configuração 'webjs' ou 'noweb' aqui se necessário. 
-                # Estamos focando apenas no 'webhooks' que é o que precisamos alterar.
                 "webhooks": [
                     {
                         "url": webhook_url,
@@ -88,19 +86,15 @@ class Waha():
                 ]
             }
         }
-        
-        # CORREÇÃO CRÍTICA: Inicializar response
         response = None 
         
         try:
-            # 2. Uso do método PUT no endpoint da sessão
             response = requests.put(
                 url, 
                 headers=headers, 
                 data=json.dumps(payload)
             )
             
-            # O status 200/204 indica sucesso na atualização
             response.raise_for_status() 
             logger.info(f"✅ Sessão '{session_name}' reconfigurada (PUT) com HMAC com sucesso. Status: {response.status_code}")
             return True

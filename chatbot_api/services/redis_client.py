@@ -27,7 +27,7 @@ def get_redis_client():
             host=settings.REDIS_HOST, 
             port=settings.REDIS_PORT, 
             db=settings.REDIS_DB,
-            decode_responses=True, 
+            decode_responses=False, 
             socket_connect_timeout=5, 
             socket_timeout=5,
         )
@@ -55,10 +55,14 @@ def enqueue_user(chat_id: str) -> int:
     logger.info(f"Usuário {chat_id} adicionado à fila e notificação enviada.")
     return new_size
 
+
 def is_user_in_queue(chat_id: str) -> bool:
     """Verifica se o usuário já está na fila."""
-    r = get_redis_client() # <<< OBTÉM A CONEXÃO AQUI
-    return chat_id in set(r.lrange(QUEUE_KEY, 0, -1))
+    r = get_redis_client()
+    queue_list_bytes = r.lrange(QUEUE_KEY, 0, -1)
+    decoded_queue = [user_id.decode('utf-8') for user_id in queue_list_bytes]
+    
+    return chat_id in decoded_queue
 
 def get_next_from_queue() -> str:
     """Remove e retorna o próximo usuário da fila (BLOCKING)"""
@@ -92,9 +96,13 @@ def add_message_to_history(chat_id: str, sender: str, message: str) -> int:
 
 def get_recent_history(chat_id: str, limit: int = 10) -> list:
     """Retorna as N mensagens mais recentes do histórico."""
-    r = get_redis_client() # <<< OBTÉM A CONEXÃO AQUI
+    r = get_redis_client() # Assume que r agora entrega BYTES
     history = r.lrange(get_history_key(chat_id), 0, limit - 1)
-    return history[::-1] 
+    
+    # DECODIFICAR AQUI ANTES DE RETORNAR!
+    decoded_history = [item.decode('utf-8') for item in history]
+    
+    return decoded_history[::-1] # Retorna strings
 
 def get_full_history(chat_id: str) -> list:
     """Retorna todo o histórico de mensagens (mais recente primeiro)"""
