@@ -6,7 +6,7 @@
 
 Este é um protótipo funcional de um sistema de gerenciamento de sessões e filas para WhatsApp API (com WAHA, mas customizável), focado em estabilidade, resiliência e **escalabilidade via arquitetura híbrida (Go + Python)**.
 
-## ⚡ NOVA ARQUITETURA E FUNCIONALIDADES PRINCIPAIS (Out/2025)
+## ⚡ NOVA ARQUITETURA E FUNCIONALIDADES PRINCIPAIS
 
 A arquitetura foi atualizada para um sistema de mensageria assíncrona, garantindo o desacoplamento de serviços e o processamento instantâneo das mensagens.
 
