@@ -93,7 +93,7 @@ services:
       - WHATSAPP_HOOK_HMAC_KEY=${WEBHOOK_HMAC_SECRET}
       - WHATSAPP_HOOK_URL=http://go-gateway:8080/webhook
     volumes:
-      - ./waha_sessions:/app/.sessions
+      - waha_session_data:/usr/src/app/sessions
     env_file:
       - .env
 
@@ -110,3 +110,4 @@ services:
 volumes:
   postgres_data:
   redis:
+  waha_session_data:
