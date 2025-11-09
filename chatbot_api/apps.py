@@ -34,8 +34,8 @@ class ChatbotApiConfig(AppConfig):
                 return
 
             max_retries = 10
-            delay_seconds = 8
-            
+            delay_seconds = 10
+            time.sleep(delay_seconds)            
             # O nome da função deve refletir que ela está ativando o WAHA, 
             # não necessariamente configurando a URL do webhook (que agora é via Docker).
             logger.info(f"⏳ Tentando ATIVAR e configurar HMAC do WAHA (máx. {max_retries}x)")
