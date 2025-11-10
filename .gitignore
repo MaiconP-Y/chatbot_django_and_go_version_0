@@ -15,6 +15,6 @@ __pycache__/
 # System
 .dockerignore
 
-*/migrations/[0-9]*.py
+
 *.pyc
 staticfiles_dist/
