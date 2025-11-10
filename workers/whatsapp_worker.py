@@ -8,7 +8,7 @@ import sys
 import logging
 import django
 
-# Configura Django
+# Configuração Django
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'chatbot.settings')
 django.setup() 
@@ -43,7 +43,6 @@ class WhatsAppWorker:
         self.agent_register = agent_register()
         
     def setup_connections(self):
-        # ... (manter inalterado) ...
         try:
             self.redis_client = get_redis_client()
             self.redis_client.ping()
@@ -73,7 +72,7 @@ class WhatsAppWorker:
     def generate_response(self, chat_id: str, history: str) -> str:
         history_str = "\n".join(history)
         logger.info(f"{history_str}")
-        response = self.agent_register.gerar_resposta_simples(message=history_str)
+        response = self.agent_register.gerar_resposta_simples(message=history_str, chat_id=chat_id)
         logger.info(f"Resposta generate_ia enviada via WAHA: {response}")
         return response
 
