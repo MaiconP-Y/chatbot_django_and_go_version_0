@@ -1,16 +1,45 @@
 import os
+import json 
 from groq import Groq
+from chatbot_api.services.service_register import enviar_dados_user
 
-# 1. Configuração da Chave (Lendo do .env via settings.py do Django)
-# Nota: No Django real, você usaria 'settings.GROQ_API_KEY'
-# Mas para o exemplo simples, vamos ler direto de uma variável de ambiente,
-# que é a maneira recomendada pela documentação da Groq.
 groq_service = Groq()
 prompt_register = ("""
-# Voce é um agente de agendamento capture se o usuario se deseja se cadastrar, se ele quiser capture seu nome e mande uma confirmação do nome.                   
-Pode usar informações ficticias, segue o contexto da conversa e responda com base na ultima mensagem do usuario, segue {message}
-"""
-)
+# **AGENTE DE REGISTRO, COLETA DE NOME E CONFORMIDADE LGPD**
+
+**OBJETIVO PRINCIPAL:** Obter o nome completo do usuário após aviso de LGPD e registrar usando a ferramenta `enviar_dados_user`.
+
+**FLUXO OBRIGATÓRIO:**
+1.  **Aviso/LGPD:** Comece a interação com o texto: "Olá! Para prosseguir, precisamos do seu nome completo para cadastro. Ao fornecer seu nome, você concorda que o utilizemos para fins de cadastro e atendimento (LGPD). Por favor, informe seu nome completo agora."
+2.  **Captura de Nome:** ESPERE a resposta do usuário, que deve ser o nome.
+3.  **GATILHO ÚNICO DE CHAMADA:** A ferramenta `enviar_dados_user` **SÓ PODE SER CHAMADA** no turno em que o usuário **INFORMAR SEU NOME REAL**. Nunca use placeholders.
+
+**REGRAS CRÍTICAS DE CHAMADA DA FERRAMENTA:**
+* **PROIBIDO** inventar nomes ou usar variáveis/placeholders como argumento para `name`.
+* O parâmetro `name` DEVE ser o nome REAL e COMPLETO extraído da mensagem do usuário.
+""")
+
+REGISTRATION_TOOL_SCHEMA = {
+    "type": "function", 
+    "function": {
+        "name": "enviar_dados_user",
+        "description": "Registra um novo usuário no banco de dados com seu ID de chat e nome. Use esta ferramenta APENAS se o usuário pedir para se cadastrar e fornecer seu nome VERDADEIRO **NUNCA USE PLACEHOLDERS**.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "chat_id": {
+                    "type": "string",
+                    "description": "O ID único do chat/usuário do WhatsApp. Essencial para o registro."
+                },
+                "name": {
+                    "type": "string",
+                    "description": "O nome fornecido pelo usuário para o registro na conversa."
+                }
+            },
+            "required": ["chat_id", "name"] # Os argumentos que a IA deve OBRIGATORIAMENTE extrair
+        }
+    }
+}
 
 class agent_register():
     """
@@ -19,13 +48,11 @@ class agent_register():
     """
     def __init__(self):
         try:
-            # O client é a ponte para a API da Groq
             self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
         except Exception as e:
-            # É bom ter tratamento de erro se a chave não for encontrada
             raise EnvironmentError("A variável GROQ_API_KEY não está configurada.") from e
 
-    def gerar_resposta_simples(self, message: str) -> str:
+    def gerar_resposta_simples(self, message: str, chat_id: str) -> str:
         """
         Gera uma resposta simples da IA para uma única mensagem do usuário.
         
@@ -39,7 +66,7 @@ class agent_register():
             },
             {
                 "role": "user",
-                "content": message,
+                "content": message
             }
         ]
         
@@ -47,13 +74,55 @@ class agent_register():
             chat_completion = self.client.chat.completions.create(
                 messages=mensagens,
                 model="llama-3.3-70b-versatile",
-                
-                temperature=0.7 
+                tools=[REGISTRATION_TOOL_SCHEMA],
+                tool_choice="auto",
+                temperature=0.1 , 
             )
 
+            response_message = chat_completion.choices[0].message
             resposta_ia = chat_completion.choices[0].message.content
-            return resposta_ia
+            
+            if response_message.tool_calls:
 
+                available_functions = {
+                    "enviar_dados_user": enviar_dados_user, # Função importada do service_register
+                }
+                
+                mensagens.append(response_message)
+                
+                for tool_call in response_message.tool_calls:
+                    function_name = tool_call.function.name
+                    function_to_call = available_functions[function_name]
+                    
+                    function_args = json.loads(tool_call.function.arguments)
+                    function_args['chat_id'] = chat_id 
+                    
+                    registration_result = function_to_call(**function_args) # Executa enviar_dados_user
+                    
+                    if registration_result:
+                        tool_content = "SUCESSO: Usuário registrado com o nome fornecido."
+                    else:
+                        tool_content = "FALHA: Usuário já existe ou erro no banco de dados. Informe o usuário."
+                    
+                    # 5. Adiciona o RESULTADO da execução ao histórico (role: tool)
+                    mensagens.append(
+                        {
+                            "tool_call_id": tool_call.id,
+                            "role": "tool", 
+                            "name": function_name,
+                            "content": f"Resultado do registro de usuário: {tool_content}"
+                        }
+                    )
+                    
+                final_completion = self.client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=mensagens 
+                )
+            
+                return final_completion.choices[0].message.content
+            
+            return resposta_ia
+            
         except Exception as e:
             print(f"Erro ao chamar a API da Groq: {e}")
             # Em caso de erro, retorne uma mensagem de fallback amigável
