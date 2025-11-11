@@ -31,8 +31,6 @@ services:
   django-web:
     build: .
     container_name: django-docker
-    #ports:
-    #  - "8000:8000"
     depends_on:
       - db
       - redis
@@ -56,6 +54,7 @@ services:
       - .env
     volumes:
       - .:/app 
+      - staticfiles_data:/static/
 
   worker:
     build: .
@@ -93,7 +92,7 @@ services:
       - WHATSAPP_HOOK_HMAC_KEY=${WEBHOOK_HMAC_SECRET}
       - WHATSAPP_HOOK_URL=http://go-gateway:8080/webhook
     volumes:
-      - waha_session_data:/usr/src/app/sessions
+      - waha_data:/app/.sessions
     env_file:
       - .env
 
@@ -116,9 +115,10 @@ services:
       - "8000:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./staticfiles_dist:/var/www/staticfiles_dist:ro
+      - staticfiles_data:/var/www/staticfiles_dist:ro
 
 volumes:
   postgres_data:
   redis:
-  waha_session_data:
+  waha_data:
+  staticfiles_data:
