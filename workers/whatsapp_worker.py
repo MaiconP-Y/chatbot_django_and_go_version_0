@@ -132,13 +132,30 @@ class WhatsAppWorker:
 
 
     def listen_queue(self):
-        pubsub = self.redis_client.pubsub()
-        pubsub.subscribe("new_user_queue")
-        for message in pubsub.listen():
-            if message['type'] == 'message':
-                raw_json_payload = message['data']
-                logger.info(f"📨 Payload de {len(raw_json_payload)} bytes recebido do Go.")
-                self.process_incoming_message_data(raw_json_payload)
+        # O nome da LISTA/FILA deve ser o mesmo usado pelo LPush no Go Gateway
+        queue_name = "new_user_queue" 
+        logger.info(f"Worker INICIADO. Aguardando mensagens na fila persistente '{queue_name}' (BLPOP)...")
+        
+        # O 'while True' mantém o worker sempre ativo e pronto para BLPOP
+        while True:
+            try:
+                # BLPOP: Bloqueia a execução (timeout=0) até que um item seja adicionado à lista.
+                # Não consome CPU enquanto espera.
+                result = self.redis_client.blpop(queue_name, timeout=30) 
+                
+                if result:
+                    # result[1] é o payload, que já foi validado pelo Go Gateway
+                    raw_json_payload = result[1] 
+                    
+                    logger.info(f"📨 Payload de {len(raw_json_payload)} bytes LIDO da fila persistente.")
+                    
+                    # O processamento é direto, sem validação de segurança:
+                    self.process_incoming_message_data(raw_json_payload)
+
+            except Exception as e:
+                # Tratamento de erro para falhas de Redis ou rede
+                logger.error(f"❌ Erro na operação BLPOP ou processamento: {e}", exc_info=True)
+                # Espera 5 segundos para evitar um loop infinito em caso de erro crítico no Red
 
     def run(self):
         logger.info("🚀 WhatsApp Worker INICIADO - Versão Corrigida")

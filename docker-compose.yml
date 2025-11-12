@@ -14,7 +14,7 @@ services:
   
   go-gateway:
     build:
-      context: .
+      context: ./go_gateway
       dockerfile: Dockerfile.go 
     container_name: go_webhook_gateway
     ports:
@@ -90,7 +90,7 @@ services:
       - WAHA_SESSION_CONFIG_IGNORE_CHANNELS=true
       - WAHA_SESSION_CONFIG_IGNORE_BROADCAST=true
       - WHATSAPP_HOOK_HMAC_KEY=${WEBHOOK_HMAC_SECRET}
-      - WHATSAPP_HOOK_URL=http://go-gateway:8080/webhook
+      - WHATSAPP_HOOK_URL=${WHATSAPP_HOOK_URL}
     volumes:
       - waha_data:/app/.sessions
     env_file:
@@ -110,7 +110,8 @@ services:
     image: nginx:stable-alpine
     container_name: nginx-reverse-proxy
     depends_on:
-      - django-web
+      - go-gateway
+      - django-web 
     ports:
       - "8000:80"
     volumes:

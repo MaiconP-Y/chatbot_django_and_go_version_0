@@ -29,7 +29,7 @@ def get_redis_client():
             db=settings.REDIS_DB,
             decode_responses=False, 
             socket_connect_timeout=5, 
-            socket_timeout=5,
+            socket_timeout=None,
         )
         _redis_client.ping()
         logger.info("Conexão com Redis estabelecida com sucesso via get_redis_client!")
