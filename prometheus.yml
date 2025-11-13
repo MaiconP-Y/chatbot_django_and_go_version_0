@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s # A frequência padrão para coletar métricas
+
+# Configuração da coleta (Scrape)
+scrape_configs:
+  # Job padrão do Prometheus para monitorar ele mesmo
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Job para monitorar o Go Gateway
+  - job_name: 'go-gateway'
+    # Importante: o nome do serviço no Docker Compose é o nome do host.
+    # O Go Gateway expõe o endpoint /metrics na porta 8080.
+    static_configs:
+      - targets: ['go-gateway:8080']
+  
+  - job_name: 'whatsapp-worker'
+    # O nome do serviço no Docker Compose: 'whatsapp-worker'
+    static_configs:
+      - targets: ['whatsapp-worker:9091']

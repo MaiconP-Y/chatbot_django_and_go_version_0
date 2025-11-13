@@ -18,11 +18,12 @@ services:
       dockerfile: Dockerfile.go 
     container_name: go_webhook_gateway
     ports:
-      - "8080:8080" # Porta para o tráfego externo
+      - "8080:8080"
     depends_on:
-      - redis
+      # CRÍTICO: Espera que o Redis esteja HEALTHY antes de iniciar
+      redis:
+        condition: service_healthy
     environment:
-      # Lendo as variáveis do seu .env
       REDIS_HOST: redis
       WEBHOOK_HMAC_SECRET: ${WEBHOOK_HMAC_SECRET}
     env_file:
@@ -64,6 +65,8 @@ services:
       - django-web
       - waha
       - go-gateway
+    ports:
+      - "9091:9091"
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -105,6 +108,11 @@ services:
       - "6379:6379"
     volumes:
       - redis:/data
+    healthcheck: # Verifica se o Redis está respondendo ao comando PING
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 5
 
   nginx:
     image: nginx:stable-alpine
@@ -117,9 +125,37 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - staticfiles_data:/var/www/staticfiles_dist:ro
+    
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus_server
+    ports:
+      - "9090:9090" 
+    volumes:
+      # Monta o arquivo de configuração 
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - go-gateway # Garante que o gateway suba antes
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-lifecycle # Necessário para recarregar a config sem reiniciar
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana_ui
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
 
 volumes:
   postgres_data:
   redis:
   waha_data:
   staticfiles_data:
+  grafana_data: # NOVO VOLUME
