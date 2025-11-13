@@ -1,4 +1,3 @@
-// ./hmac/validator.go
 package hmac
 
 import (

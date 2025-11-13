@@ -3,14 +3,11 @@ import requests
 import json
 import logging
 
-
-# Adicionando logger para melhor rastreamento no console
 logger = logging.getLogger(__name__)
 
 class Waha():
 
     def __init__(self):
-        # As variáveis de ambiente são lidas do .env carregado pelo Django
         self.__api_url = os.environ.get("WAHA_API_URL", "http://waha:3000")
         self.waha_api_chave = os.environ.get("WAHA_API_KEY")
         self.waha_instance = os.environ.get("WAHA_INSTANCE_KEY", "default")
@@ -60,8 +57,6 @@ class Waha():
         """
         import time
         session_name = self.waha_instance
-        
-        # Endpoint para INICIAR a sessão (POST para iniciar)
         url = f"{self.__api_url}/api/sessions/{session_name}/start"
         api_key = self.waha_api_chave 
         
@@ -79,8 +74,6 @@ class Waha():
                 headers=headers
             )
             
-            # Códigos de SUCESSO: 201 (Iniciado), 200 (Já iniciando/ativo), 
-            # 422 (Já iniciado, mas o status é considerado sucesso)
             if response.status_code in (201, 200, 422):
                 if response.status_code == 422:
                     logger.warning(f"Sessão '{session_name}' já está ativa ou iniciando (422), considerado sucesso.")
@@ -88,11 +81,9 @@ class Waha():
                     logger.info(f"✅ Início da sessão WAHA '{session_name}' solicitado com sucesso. Status: {response.status_code}")
                 return True
             
-            # Se o status for um erro 4xx/5xx não tratado (ex: 401, 404, 500), levanta a exceção
             response.raise_for_status()
 
         except requests.exceptions.RequestException as e:
-            # Captura exceções (falha de conexão, timeout, ou HTTPError de status não-tratado)
             logger.error(f"❌ Erro ao iniciar sessão WAHA: {e}")
             if response is not None and response.status_code == 401:
                 logger.error("ERRO 401: Verifique se o 'WAHA_API_KEY' no .env está correto.")
@@ -109,7 +100,6 @@ class Waha():
         """
         session_name = self.waha_instance
         
-        # 1. Endpoint específico da sessão (PUT para UPDATE)
         url = f"{self.__api_url}/api/sessions/{session_name}" 
         api_key = self.waha_api_chave 
         
@@ -121,7 +111,6 @@ class Waha():
         webhook_url = os.environ.get("WHATSAPP_HOOK_URL")
         hook_events = os.environ.get("WHATSAPP_HOOK_EVENTS", "message")
         
-        # Payload para reconfigurar o webhook com a chave HMAC
         payload = {    
             "config": {
                 "webhooks": [
@@ -147,23 +136,17 @@ class Waha():
                 data=json.dumps(payload)
             )
             
-            # Verifica 4xx/5xx
             response.raise_for_status() 
             logger.info(f"✅ Sessão '{session_name}' reconfigurada (PUT) com HMAC com sucesso. Status: {response.status_code}")
             
-            # 2. Se o PUT foi bem-sucedido, agora INICIA a sessão (POST /start)
-            # Retorna o resultado da tentativa de início.
             return self.start_existing_session()
             
         except requests.exceptions.RequestException as e:
-            # Captura e trata erros do PUT
             logger.error(f"❌ Erro ao reconfigurar sessão WAHA (PUT): {e}")
             
             if response is not None:
                 if response.status_code == 401:
                     logger.error("ERRO 401: Verifique se o 'WAHA_API_KEY' no .env está correto.")
-                # 422 Unprocessable Entity é comum se a sessão já existe.
-                # Tenta iniciar a sessão mesmo assim, pois o HMAC pode já ter sido configurado antes.
                 if response.status_code == 422:
                      logger.warning(f"Sessão '{session_name}' já existe (422), prosseguindo para o START.")
                      return self.start_existing_session()

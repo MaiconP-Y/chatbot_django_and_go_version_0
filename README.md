@@ -1,40 +1,47 @@
 # WhatsApp Session Manager
 
-**Protótipo Ativo - Mantido e Atualizado Regularmente**
+## Protótipo Ativo: Otimizado para Resiliência, Segurança e Alta Concorrência
 
-## Escopo do Protótipo
+Este é um protótipo funcional de um sistema de gerenciamento de sessões para WhatsApp API (via WAHA, customizável), focado em **estabilidade, concorrência e escalabilidade** via uma arquitetura híbrida de microserviços.
 
-Este é um protótipo funcional de um sistema de gerenciamento de sessões e filas para WhatsApp API (com WAHA, mas customizável), focado em estabilidade, resiliência e **escalabilidade via arquitetura híbrida (Go + Python)**.
+---
 
-## ⚡ NOVA ARQUITETURA E FUNCIONALIDADES PRINCIPAIS
+## ARQUITETURA DE ALTA PERFORMANCE (Go Way)
 
-A arquitetura foi atualizada para um sistema de mensageria assíncrona, garantindo o desacoplamento de serviços e o processamento instantâneo das mensagens.
+A arquitetura foi atualizada para um **pipeline de processamento assíncrono** com foco total no desacoplamento de serviços. O **Gateway em Go** garante que a latência de ingestão seja quase zero, enquanto o Worker Python foca no processamento complexo e IA.
 
-| Funcionalidade | Detalhes |
-|----------------|-----------|
-| **Gateway de Ingestão (Go)** | **Novo serviço em Golang** dedicado a receber o tráfego I/O Bound do Webhook, aplicando validação HMAC (segurança) e garantindo uma resposta ultrarrápida ao WAHA. |
-| **Comunicação Estável** | Uso do Redis Pub/Sub para desacoplar a ingestão (Go) do processamento (Python), garantindo o acionamento instantâneo e resiliente do Worker. |
-| **Gestão de Estado** | Persistência do estado da conversa por usuário (onde o usuário parou). |
-| **Atendimento Organizado** | Controle de Estado, Histórico e Gerenciamento de Fila que ordena as conversas e envia notificações de posição na fila para o usuário. |
-| **Histórico de Conversas** | Armazenamento completo do histórico de mensagens. |
+### Ganhos de Engenharia e Funcionalidades Principais
 
-## Arquitetura Atual (Híbrida: Go + Python)
+| Pilar | Funcionalidade | Detalhes Técnicos e Ganhos de Performance |
+| :--- | :--- | :--- |
+| **Ingestão/Segurança** | **Go Webhook Gateway (Fast Path)** | Serviço em Golang para tráfego I/O Bound. Aplica **Validação HMAC Criptograficamente Segura** (`hmac.Equal` para prevenir **Timing Attacks**). Resposta garantida em **<100ms** (via Redis Timeout Crítico) para máxima concorrência. |
+| **Resiliência de Rede** | **Reverse Proxy Robusto (NGINX)** | Implementa **Rate Limiting** (`burst`/`nodelay`) e **Headers de Segurança** (`X-Frame-Options`). Utiliza **Resolução Dinâmica de DNS** (`resolve` a cada 5s) para garantir roteamento contínuo em ambientes Docker voláteis. |
+| **Comunicação** | **Mensageria Assíncrona** | Uso do **Redis List/LPUSH** para fila persistente. Desacopla a ingestão (Go) do processamento (Python), garantindo a **não-perda de mensagens** e o acionamento **BLPOP** do Worker (baixo consumo de CPU). |
+| **Lógica de Negócios** | **Gestão de Sessão (Python)** | Gerenciamento de estado de conversa, controle de Fila de Atendimento e execução de **LLM Agents (Groq)** para lógica de negócios e integrações. |
+| **Observabilidade** | **Monitoramento Ativo (Prometheus)** | Infraestrutura preparada com Prometheus e Grafana. O `prometheus.yml` já mapeia os *targets* `go-gateway:8080` e `whatsapp-worker:9091` para coleta de dados de saúde e performance. |
 
-O sistema opera com um fluxo de comunicação assíncrono, dividido em microserviços que exploram o melhor de cada linguagem: a concorrência do Go e a produtividade do ecossistema Python/Django.
+---
 
-**Fluxo de Mensagens:** `WhatsApp Webhook → Go Webhook Gateway → Redis (Pub/Sub) → Worker (Processamento) → WAHA API`
+## FLUXO E STACK TECNOLÓGICA
 
-**Nota Técnica sobre o Go Gateway:**
-A ingestão dos Webhooks foi movida para um Gateway dedicado em **Golang**. Esta mudança garante que o sistema de recebimento de mensagens seja **I/O Bound**, altamente concorrente e resiliente, respondendo ao WAHA em milissegundos e liberando o Worker Python para focar exclusivamente na lógica de negócios e IA.
+### Fluxo de Mensagens:
 
-**Nota sobre Escalabilidade:**
-Atualmente, o Worker é configurado para atender 1 usuário por vez, mas a arquitetura já está pronta e provada para escalar com múltiplos Workers (processos) consumindo o Redis Pub/Sub simultaneamente.
+`WhatsApp Webhook → NGINX (Rate Limit) → Go Webhook Gateway (HMAC/LPUSH) → Redis Queue → Worker Python (BLPOP/LLM) → WAHA API`
 
-## Stack Tecnológica
+### Nota sobre Escalabilidade:
 
-- **Backend (Processamento/Lógica):** Django 4.2+ (Python)
-- **Backend (Ingestão/Gateway):** **Go (Golang)**
-- **Banco de Sessão:** Redis
-- **Mensageria:** Redis Pub/Sub e Sistema de Filas integrado
-- **API WhatsApp:** WAHA (WhatsApp HTTP API)
-- **Containerização:** Docker & Docker Compose
+A arquitetura assíncrona com fila Redis permite o **escalamento horizontal imediato** dos *Workers Python*, aumentando o *throughput* de processamento conforme a demanda cresce.
+
+### Stack Tecnológica
+
+| Camada | Tecnologia | Função Principal |
+| :--- | :--- | :--- |
+| **Gateway/Ingestão** | **Go (Golang)** | Performance I/O, Validação HMAC, Resposta Rápida (Non-blocking) |
+| **Proxy/Borda** | **NGINX** | Rate Limiting, Segurança, Roteamento Dinâmico |
+| **Lógica/Negócios** | **Django 4.2+ (Python)** | Gerenciamento de Estado, Integrações, LLM Agents |
+| **Mensageria/Fila** | **Redis** | Fila de Trabalho (LPUSH/BLPOP) e Gestão de Estado de Sessão |
+| **APIs** | **WAHA API, Groq** | Comunicação com WhatsApp, Motor de Inferência LLM |
+
+### PRÓXIMOS PASSOS (OBSERVABILIDADE)
+
+**Aviso:** O sistema está configurado para o **Pull de Métricas** via Prometheus. Em breve, a instrumentação no código (Go-Gateway e Worker Python) será completada para que os dados de **Latência Crítica, Throughput e Erros** comecem a ser coletados e visualizados no Grafana.

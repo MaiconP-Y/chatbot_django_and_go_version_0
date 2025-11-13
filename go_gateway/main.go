@@ -7,8 +7,6 @@ import (
 	"log"
 	"net/http" 
 	"os"
-
-	// Importamos os novos pacotes, usando o nome do módulo 'go_waha_gateway'
 	"go_waha_gateway/services/hmac"
 	"go_waha_gateway/services/redis"
 )
@@ -67,10 +65,9 @@ func webhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// PASSO 3: PUBLICAR no Redis (AGORA COM LPUSH E TIMEOUT)
+	// PASSO 3: PUBLICAR no Redis
 	// r.Context() é o Contexto da Requisição HTTP
 	if err := redis.PublishMessage(r.Context(), rawBody); err != nil {
-		// Se der erro, o motivo mais provável é o Timeout de 100ms no Redis
 		log.Printf("❌ Erro de publicação no Redis (Timeout provável): %v", err)
         
         // Retorna 503 para que o WAHA tente novamente mais tarde

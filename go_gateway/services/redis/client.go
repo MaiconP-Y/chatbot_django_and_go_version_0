@@ -1,4 +1,3 @@
-// ./redis/client.go
 package redis
 
 import (

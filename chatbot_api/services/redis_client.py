@@ -5,10 +5,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# O objeto cliente será armazenado globalmente AQUI, mas inicializado como None
 _redis_client = None 
-
-# --- A Conexão Lazy (O Padrão Ouro) ---
 
 def get_redis_client():
     """
@@ -17,11 +14,9 @@ def get_redis_client():
     """
     global _redis_client
     
-    # 1. Se já estiver conectado, retorna a conexão existente imediatamente
     if _redis_client is not None:
         return _redis_client
 
-    # 2. Tenta conectar pela primeira vez (o settings já estará carregado aqui)
     try:
         _redis_client = redis.Redis(
             host=settings.REDIS_HOST, 
@@ -38,18 +33,13 @@ def get_redis_client():
     except Exception as e:
         _redis_client = None
         logger.error(f"Erro CRÍTICO ao conectar ao Redis: {e}", exc_info=True)
-        # É importante levantar um erro se a conexão for vital
         raise ConnectionError(f"Falha na inicialização do cliente Redis: {e}") 
 
-
-# --- Chaves de Redis (Permanecem iguais) ---
 QUEUE_KEY = "queue:support"
-
-# --- Funções de Fila (Todas devem usar get_redis_client()) ---
 
 def enqueue_user(chat_id: str) -> int:
     """Adiciona o chat_id na fila e NOTIFICA O WORKER."""
-    r = get_redis_client() # <<< OBTÉM A CONEXÃO AQUI
+    r = get_redis_client() 
     new_size = r.rpush(QUEUE_KEY, chat_id)
     
     logger.info(f"Usuário {chat_id} adicionado à fila e notificação enviada.")
@@ -137,8 +127,6 @@ def set_session_ttl(chat_id: str, ttl_seconds: int = 3600):
     r.expire(get_session_key(chat_id), ttl_seconds)
     logger.info(f"⏰ TTL de {ttl_seconds}s definido para sessão de {chat_id}")
 
-#MESSAGE_DUPLICATE:
-
 def check_and_set_message_id(message_id: str) -> bool:
     """
     Verifica se o ID da mensagem já foi processado.
@@ -149,7 +137,5 @@ def check_and_set_message_id(message_id: str) -> bool:
     """
     r = get_redis_client()
     key = f"processed_msg:{message_id}"
-    # SET NX (Set if Not eXists) e EX (Expire time in seconds)
-    # Se o SET for bem-sucedido (o ID é novo), ele retorna 1. Se o ID já existe, retorna 0.
     is_new = r.set(key, 1, ex=60, nx=True)
-    return is_new is not None # Se for 'None', é porque já existia (duplicado)
+    return is_new is not None 
