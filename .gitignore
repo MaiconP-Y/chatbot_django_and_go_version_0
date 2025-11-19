@@ -18,3 +18,5 @@ __pycache__/
 
 *.pyc
 staticfiles_dist/
+
+google-credentials.json

@@ -39,20 +39,14 @@ func InitClient(ctx context.Context) error {
 	return nil
 }
 
-// PublishMessage insere (LPUSH) a mensagem na fila, usando o contexto de requisição
 func PublishMessage(ctx context.Context, rawBody []byte) error {
-    // ----------------------------------------------------
-    // TIMEOUT CRÍTICO DE 100ms para a operação de Redis
-    // Garante que o Go Gateway não trave esperando por Redis lento.
-    // ----------------------------------------------------
     publishCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
     defer cancel()
     
-    // LPUSH empilha na lista (fila persistente)
-    err := Client.LPush(publishCtx, ChannelName, rawBody).Err()
-    if err != nil {
-        // Retorna o erro, que o handler verificará se é um timeout
-        return fmt.Errorf("erro ao LPush/publicar mensagem no Redis: %w", err)
+    // ➡️ RPUSH (Right Push) para garantir FIFO. Apenas enfileira o payload BRUTO.
+    if err := Client.RPush(publishCtx, ChannelName, rawBody).Err(); err != nil {
+        return fmt.Errorf("erro ao RPush na fila principal: %w", err)
     }
+    
     return nil
 }

@@ -20,7 +20,6 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      # CRÍTICO: Espera que o Redis esteja HEALTHY antes de iniciar
       redis:
         condition: service_healthy
     environment:

@@ -1,4 +1,3 @@
-// ./main.go
 package main
 
 import (
@@ -11,7 +10,6 @@ import (
 	"go_waha_gateway/services/redis"
 )
 
-// Variável global para o contexto base da aplicação
 var ctx = context.Background() 
 
 func main() {
@@ -56,26 +54,24 @@ func webhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close() 
 
-	// PASSO 2: Validação HMAC (Segurança - USANDO PACOTE EXTERNO)
-	hmacHeader := r.Header.Get("X-Webhook-Hmac")
-	
-	if hmacHeader == "" || !hmac.ValidateHmac(rawBody, hmacHeader) {
-		log.Println("❌ Requisição recusada: HMAC ausente ou inválido.")
-		http.Error(w, "Forbidden: Invalid HMAC signature", http.StatusForbidden)
-		return
-	}
-	
-	// PASSO 3: PUBLICAR no Redis
-	// r.Context() é o Contexto da Requisição HTTP
-	if err := redis.PublishMessage(r.Context(), rawBody); err != nil {
-		log.Printf("❌ Erro de publicação no Redis (Timeout provável): %v", err)
-        
-        // Retorna 503 para que o WAHA tente novamente mais tarde
-		http.Error(w, "Service Temporarily Unavailable (Redis Timeout)", http.StatusServiceUnavailable)
-		return
-	}
-	
-	log.Println("✅ Mensagem LPush/publicada no Redis com sucesso!")
-	w.WriteHeader(http.StatusOK) 
-	w.Write([]byte(`{"status":"ok"}`))
+    // PASSO 2: Validação HMAC (SEGURANÇA EXTREMA)
+    hmacHeader := r.Header.Get("X-Webhook-Hmac")
+    
+    if hmacHeader == "" || !hmac.ValidateHmac(rawBody, hmacHeader) {
+        log.Println("❌ Requisição recusada: HMAC ausente ou inválido.")
+        http.Error(w, "Forbidden: Invalid HMAC signature", http.StatusForbidden)
+        return
+    }
+    
+    // PASSO 3: PUBLICAR no Redis - AGORA SIMPLES E RÁPIDO
+    // Apenas enfileira o payload BRUTO. O Duplicata Check e a Decodificação ficam no Worker.
+    if err := redis.PublishMessage(r.Context(), rawBody); err != nil {
+        log.Printf("❌ Erro ao publicar mensagem no Redis: %v", err)
+        http.Error(w, "Erro de enfileiramento", http.StatusServiceUnavailable) 
+        return
+    }
+    
+    // PASSO 4: SUCESSO
+    w.WriteHeader(http.StatusOK)
+    log.Println("✨ Webhook processado com sucesso e mensagem enfileirada!")
 }

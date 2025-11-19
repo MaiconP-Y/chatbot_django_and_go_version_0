@@ -13,33 +13,28 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'chatbot.settings')
 django.setup() 
 
 from chatbot_api.services.redis_client import (
-    get_session_state,
-    update_session_state,
     add_message_to_history, 
     get_recent_history,
-    publish_new_user, 
-    enqueue_user, 
-    is_user_in_queue,
     get_redis_client,
     check_and_set_message_id
 )
 from chatbot_api.services.waha_api import Waha
-from chatbot_api.services.ia_service import agent_register
-
-waha_api = Waha()
+from chatbot_api.services.ia.ia_core import agent_service
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("whatsapp-worker")
+QUEUE_NAME = "new_user_queue"
 
 class WhatsAppWorker:
     def __init__(self):
         self.redis_client = None
         self.setup_connections()
         self.redis_client = get_redis_client()
-        self.agent_register = agent_register()
+        self.service_agent = agent_service()
+        self.service_waha = Waha()
         
     def setup_connections(self):
         try:
@@ -49,105 +44,75 @@ class WhatsAppWorker:
             logger.error(f"❌ Erro na configuração do Worker: {e}")
             raise
 
-    def process_user_message(self, chat_id: str):
-        """Processa a mensagem do usuário com a IA."""
-        try:
-            history = get_recent_history(chat_id, limit=10)
-            response = self.generate_response(chat_id, history)
-            waha_api.send_whatsapp_message(chat_id, response)
-            logger.info(f"Resposta gerada e enviada via WAHA: {chat_id}")
-            add_message_to_history(chat_id, "Bot", response)
-            update_session_state(chat_id, step="EM_ATENDIMENTO")
-
-        except Exception as e:
-            logger.error(f"❌ Erro ao processar {chat_id}: {e}", exc_info=True)
-            try:
-                enqueue_user(chat_id)
-                publish_new_user(chat_id)
-                logger.info(f"🔄 Usuário re-adicionado na fila: {chat_id}")
-            except Exception as retry_error:
-                logger.error(f"💥 Erro ao re-adicionar na fila: {retry_error}")
-
-    def generate_response(self, chat_id: str, history: str) -> str:
-        history_str = "\n".join(history)
-        logger.info(f"{history_str}")
-        response = self.agent_register.gerar_resposta_simples(message=history_str, chat_id=chat_id)
-        logger.info(f"Resposta generate_ia enviada via WAHA: {response}")
-        return response
-
-    def process_incoming_message_data(self, raw_json_payload: str):
+    def process_incoming_message_data(self, raw_json_payload):
         """
-        Função central que implementa a lógica de fluxo do Webhook funcional.
+        Lógica: Decodificar -> Duplicata Check -> Processar -> Re-enfileirar (se falhar).
         """
         try:
             main_data = json.loads(raw_json_payload.decode('utf-8'))
+        except Exception as e:
+            logger.error(f"❌ Erro ao decodificar JSON: {e}")
+            return 
+
+        try:
             message_data = main_data.get("payload", {})
             chat_id = message_data.get("from")
-            message = message_data.get("body", "").strip().lower() 
+            message_text = message_data.get("body", "").strip()
             message_id = message_data.get("id")
-
-            if not message or not chat_id:
-                 logger.info(f"⏭️ Mensagem sem corpo ou sem chat_id. Ignorando. {chat_id}")
-                 return
+            
+            if not message_id:
+                logger.warning("Payload sem message_id válido. Descartando (Ex: Notificação de leitura).")
+                return 
             
             if not check_and_set_message_id(message_id):
-                 logger.info(f"⏭️ Mensagem {message_id} de {chat_id} duplicada. Ignorando.")
-                 return 
+                logger.warning(f"⚠️ Duplicata ID: {message_id} descartada pelo Worker (SETNX falhou).")
+                return 
+
+            if not chat_id:
+                logger.warning(f"Mensagem ID: {message_id} sem chat_id válido. Descartando.")
+                return
+
+            logger.info(f"Processando nova mensagem ID: {message_id} de {chat_id}")
+            add_message_to_history(chat_id, "User", message_text)
+            history = get_recent_history(chat_id, limit=10)
+            history_str = "\n".join(history)
+            logger.info(f"{history_str}")
+            response = self.service_agent.router(history_str, chat_id)
+
+            if response == "SUCCESS_REGISTRATION":
+                final_bot_response = "Cadastro realizado com sucesso! Seja bem-vindo(a). Como posso te ajudar hoje?"
+                self.service_waha.send_whatsapp_message(chat_id, final_bot_response)
+                return 
             
-            add_message_to_history(chat_id, "User", message)
-
-            session_state = get_session_state(chat_id)
-            raw_step = session_state.get(b'step') 
-            current_step = raw_step.decode('utf-8') if raw_step else 'INICIO'
-            logger.info(f"Estado de {chat_id}: {current_step}")
-
-            if current_step == "EM_ATENDIMENTO":
-                self.process_user_message(chat_id)
-                return 
-
-            elif not is_user_in_queue(chat_id): 
-                
-                queue_position = enqueue_user(chat_id)
-                new_step = "IN_QUEUE"
-                
-                resposta = f"Você está na fila. Posição: {queue_position}. Aguarde o atendimento."
-                waha_api.send_whatsapp_message(chat_id, resposta) 
-                update_session_state(chat_id, step=new_step)
-                
-                if queue_position == 1:
-                    logger.info("Worker notificado. Novo usuário é o primeiro. Chamando IA.")
-                    self.process_user_message(chat_id) 
-
-                return 
-
-            else:
-                 logger.info(f"⏭️ Usuário {chat_id} está na fila ({current_step}). Ignorando nova mensagem.")
-                 return
-
-        except json.JSONDecodeError:
-            logger.error(f"❌ Erro ao decodificar JSON do Redis. Payload inválido.")
+            add_message_to_history(chat_id, "Bot", response)
+            self.service_waha.send_whatsapp_message(chat_id, response) 
+            logger.info(f"Processamento para {chat_id} BEM-SUCEDIDO.")
+            
         except Exception as e:
-            logger.error(f"❌ Erro CRÍTICO no processamento da mensagem: {e}", exc_info=True)
-
+            logger.error(f"❌ Falha CRÍTICA no processamento para {chat_id}: {e}", exc_info=True)
+            self.redis_client.rpush(QUEUE_NAME, raw_json_payload)
+            logger.warning(f"♻️ Mensagem {message_id} re-enfileirada para reprocessamento.")
+            raise 
 
     def listen_queue(self):
-        queue_name = "new_user_queue" 
+        queue_name = QUEUE_NAME
         logger.info(f"Worker INICIADO. Aguardando mensagens na fila persistente '{queue_name}' (BLPOP)...")
+
         while True:
             try:
-                # BLPOP: Bloqueia a execução (timeout=0) até que um item seja adicionado à lista.
-                # Não consome CPU enquanto espera.
+                # Otimização: BLPOP não-bloqueante (com timeout para permitir o encerramento limpo)
                 result = self.redis_client.blpop(queue_name, timeout=30) 
                 
                 if result:
                     raw_json_payload = result[1] 
-                    
-                    logger.info(f"📨 Payload de {len(raw_json_payload)} bytes LIDO da fila persistente.")
+                    logger.info(f"📨 Payload LIDO da fila persistente.")
                     self.process_incoming_message_data(raw_json_payload)
 
             except Exception as e:
-                logger.error(f"❌ Erro na operação BLPOP ou processamento: {e}", exc_info=True)
-
+                # Se houver erro no BLPOP (ex: desconexão do Redis), registre o erro e espere um pouco.
+                logger.error(f"❌ Erro no loop de escuta (worker): {e}")
+                import time; time.sleep(5) # Espera antes de tentar reconectar/re-escutar
+                
     def run(self):
         logger.info("🚀 WhatsApp Worker INICIADO - Versão Corrigida")
         try:

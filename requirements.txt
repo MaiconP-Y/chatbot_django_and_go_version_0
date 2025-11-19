@@ -52,3 +52,6 @@ six
 typing_extensions
 urllib3
 wheel
+
+google-auth
+google-api-python-client
