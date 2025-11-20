@@ -79,10 +79,10 @@ class WhatsAppWorker:
             logger.info(f"{history_str}")
             response = self.service_agent.router(history_str, chat_id)
 
-            if response == "SUCCESS_REGISTRATION":
-                final_bot_response = "Cadastro realizado com sucesso! Seja bem-vindo(a). Como posso te ajudar hoje?"
-                self.service_waha.send_whatsapp_message(chat_id, final_bot_response)
-                return 
+            #if response == "SUCCESS_REGISTRATION":
+            #    final_bot_response = "Cadastro realizado com sucesso! Seja bem-vindo(a). Como posso te ajudar hoje?"
+            #    self.service_waha.send_whatsapp_message(chat_id, final_bot_response)
+            #    return 
             
             add_message_to_history(chat_id, "Bot", response)
             self.service_waha.send_whatsapp_message(chat_id, response) 

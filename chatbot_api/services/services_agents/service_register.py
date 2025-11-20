@@ -1,6 +1,6 @@
 from chatbot_api.models import UserRegister
 from django.db import IntegrityError
-from chatbot_api.services.redis_client import delete_history, delete_session_state
+from chatbot_api.services.redis_client import delete_session_date
 import logging
 
 logging.basicConfig(
@@ -15,8 +15,7 @@ def enviar_dados_user(chat_id: str, name: str) -> UserRegister | None:
             username=name,
             chat_id=chat_id,
         )
-        delete_session_state(chat_id)
-        delete_history(chat_id)
+        delete_session_date(chat_id)
         logger.info(f"Usuário {name} registrado com sucesso. ID: {new_user.chat_id}")
         if new_user:
             return "SUCCESS_REGISTRATION" 

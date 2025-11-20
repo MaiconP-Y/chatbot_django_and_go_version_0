@@ -31,23 +31,24 @@ class agent_service():
                 if step_decode:
                     
                     if step_decode == 'AGENT_MARC_CONFIRM':
-                        response = f"Chamando Agente de Data para continuação do agendamento (chat_id: {chat_id})" 
+                        response = self.date_agent.generate_date(history_str, chat_id)
                     
                     elif step_decode == 'AGENT_CAN_VERIF':
                         response = f"Chamando Agente de Consultas/Cancelamento (chat_id: {chat_id})" 
+                    return response
                         
                 else: 
                     response = self.router_agent.route_intent(history_str)
                     if response == 'ativar_agent_marc':
                         update_session_state(chat_id, registration_step='AGENT_MARC_CONFIRM')
-                        response = "Intenção de Agendamento detectada. Por favor, forneça a data e hora desejadas." 
+                        response = self.date_agent.generate_date(history_str, chat_id)
                         
                     elif response == 'ativar_agent_ver_cancel':
                         update_session_state(chat_id, registration_step='AGENT_CAN_VERIF')
-                        response = "Intenção de Consulta/Cancelamento detectada. Qual o ID da consulta ou o seu CPF?"
-                        
+                        response = self.date_agent.generate_date(history_str, chat_id)
+                    return response
             else:
-                LGPD_MESSAGE = "Olá! Para prosseguir, precisamos do seu nome completo para cadastro. Ao fornecer seu nome, você concorda que o utilizemos para fins de cadastro, atendimento (LGPD) e lembretes. Caso deseje solicitar a exclusão de seus dados no futuro, envie um email para exclusao@seusistema.com.br. Por favor se concorda informe seu nome completo."
+                LGPD_MESSAGE = "Olá! Para prosseguir, precisamos do seu nome completo para cadastro. Ao fornecer seu nome, você concorda que o utilizemos para fins de cadastro, atendimento (LGPD) e lembretes. Caso deseje solicitar a exclusão de seus dados no futuro, envie um email para exclusao@seusistema.com.br."
 
                 if not step_decode:
                     update_session_state(chat_id, registration_step='WAITING_NAME')

@@ -50,6 +50,8 @@ services:
       REDIS_PORT: 6379
       REDIS_DB: 0
       WEBHOOK_HMAC_SECRET: ${WEBHOOK_HMAC_SECRET}
+      GOOGLE_CREDENTIALS_PATH: ${GOOGLE_CREDENTIALS_PATH}
+      GOOGLE_CALENDAR_ID: ${GOOGLE_CALENDAR_ID}
     env_file:
       - .env
     volumes:
