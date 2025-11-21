@@ -2,15 +2,15 @@ import os
 import json 
 from groq import Groq
 from chatbot_api.services.services_agents.service_register import enviar_dados_user
-from chatbot_api.services.services_agents.prompts_agents import prompt_register
+from chatbot_api.services.services_agents.prompts_agents import prompt_cancel
 
 groq_service = Groq()
 
 REGISTRATION_TOOL_SCHEMA = {
     "type": "function", 
     "function": {
-        "name": "enviar_dados_user",
-        "description": "Registra um novo usuário no banco de dados com seu ID de chat e nome. Use esta ferramenta APENAS se o usuário pedir para se cadastrar e fornecer seu nome VERDADEIRO **NUNCA USE PLACEHOLDERS**.",
+        "name": "",
+        "description": "",
         "parameters": {
             "type": "object",
             "properties": {
@@ -18,17 +18,13 @@ REGISTRATION_TOOL_SCHEMA = {
                     "type": "string",
                     "description": "O ID único do chat/usuário do WhatsApp. Essencial para o registro."
                 },
-                "name": {
-                    "type": "string",
-                    "description": "O nome fornecido pelo usuário para o registro na conversa."
-                }
             },
-            "required": ["chat_id", "name"] 
+            "required": ["chat_id"] 
         }
     }
 }
 
-class Agent_register():
+class Agent_cancel():
     """
     Classe de serviço dedicada a interagir com a API da Groq, usando o histórico completo (history_str)
     para manter o contexto e delegar ações de registro via Tool Calling.
@@ -39,7 +35,7 @@ class Agent_register():
         except Exception as e:
             raise EnvironmentError("A variável GROQ_API_KEY não está configurada.") from e
     
-    def generate_register(self, history_str: str, chat_id: str) -> str:
+    def generate_cancel(self, history_str: str, chat_id: str) -> str:
         """
         Gera uma resposta da IA, usando a string do histórico completo como a última mensagem do usuário.
         
@@ -50,7 +46,7 @@ class Agent_register():
         mensagens = [
             {
                 "role": "system",
-                "content": prompt_register,
+                "content": prompt_cancel,
             },
             {
                 "role": "user",
@@ -85,7 +81,7 @@ class Agent_register():
                     function_args['chat_id'] = chat_id 
                     
                     registration_result = function_to_call(**function_args) 
-                    if registration_result == "SUCCESS_REGISTRATION": 
+                    if registration_result == "SUCCESS_CANCEL": 
                         return "COMPLETED"
                     else:
                         tool_content = "FALHA: Usuário já existe ou erro no banco de dados. Informe o usuário."                   
@@ -95,7 +91,7 @@ class Agent_register():
                             "tool_call_id": tool_call.id,
                             "role": "tool", 
                             "name": function_name,
-                            "content": f"Resultado do registro de usuário: {tool_content}"
+                            "content": f"Resultado da Ferramenta {function_name}: {tool_content}"
                         }
                     )
                     

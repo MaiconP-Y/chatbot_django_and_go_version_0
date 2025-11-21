@@ -1,8 +1,9 @@
 import os
 import json 
 from groq import Groq
-from chatbot_api.services.redis_client import delete_session_date
+from chatbot_api.services.redis_client import delete_session_date, delete_session_state
 from chatbot_api.services.services_agents.prompts_agents import prompt_date
+# REMOVIDO: from chatbot_api.services.ia.ia_core import agent_service 
 from chatbot_api.services.services_agents.service_api_calendar import ServicesCalendar
 
 groq_service = Groq()
@@ -73,16 +74,17 @@ class Agent_date():
     Classe de serviço dedicada a interagir com a API da Groq, usando o histórico completo (history_str)
     para manter o contexto e delegar ações de registro via Tool Calling.
     """
-    def __init__(self):
+    def __init__(self, router_agent_instance): # 🟢 RECEBE a instância do roteador
         try:
             self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
             # Inicializa o serviço do Google Calendar (A tool pura)
             ServicesCalendar.inicializar_servico()
             self.calendar_services = ServicesCalendar()
+            self.router_agent = router_agent_instance # 🟢 Armazena a instância injetada
         except Exception as e:
             raise EnvironmentError("A variável GROQ_API_KEY não está configurada.") from e
     
-    def generate_date(self, history_str: str, chat_id: str) -> str:
+    def generate_date(self, history_str: str, chat_id: str, user_name: str) -> str:
         """
         Gera uma resposta da IA, usando a string do histórico completo como a última mensagem do usuário.
         """
@@ -90,7 +92,7 @@ class Agent_date():
         mensagens = [
             {
                 "role": "system",
-                "content": prompt_date,
+                "content": f"O NOME COMPLETO do usuário é: {user_name}. {prompt_date}",
             },
             {
                 "role": "user",
@@ -102,7 +104,7 @@ class Agent_date():
             chat_completion = self.client.chat.completions.create(
                 messages=mensagens,
                 model="llama-3.3-70b-versatile",
-                tools=REGISTRATION_TOOL_SCHEMA, # Usando o schema corrigido
+                tools=REGISTRATION_TOOL_SCHEMA, 
                 tool_choice="auto",
                 temperature=0.1 , 
             )
@@ -130,8 +132,8 @@ class Agent_date():
                     if function_name == "delete_session_date":
                         function_args['chat_id'] = chat_id 
                         tool_result = function_to_call(**function_args)
-                        if tool_result == "SUCCESS_RESET": 
-                            return "SUCCESS_RESET"
+                        if tool_result == "SUCCESS_RESET":        
+                            return "Para responder eu preciso da sua pergunta novamente. Poderia mandar novamente?"
                         tool_content = "SUCCESS: Seção de agendamento resetada com sucesso."
                     
                     # Para as funções do Calendar, o service deve ser passado como primeiro argumento
@@ -139,7 +141,7 @@ class Agent_date():
                         if not ServicesCalendar.service:
                             tool_content = "FALHA: O serviço do Google Calendar não foi inicializado."
                         elif function_name == "agendar_consulta_1h":
-                            function_args['chat_id'] = chat_id # <- AQUI ESTÁ A CORREÇÃO
+                            function_args['chat_id'] = chat_id # <- A CORREÇÃO
                                 
                             # Chama o método estático passando o objeto service real e os argumentos
                             tool_content = function_to_call(

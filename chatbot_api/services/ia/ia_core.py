@@ -3,6 +3,19 @@ from chatbot_api.services.services_agents.service_register import is_user_regist
 from chatbot_api.services.ia.agent_register import Agent_register
 from chatbot_api.services.ia.agent_date import Agent_date
 from chatbot_api.services.ia.agent_router import Agent_router
+from chatbot_api.services.ia.agent_consul_cancel import Agent_cancel
+
+def get_user_name_from_db(chat_id: str) -> str | None:
+    """Busca o nome do usuário no banco de dados Django."""
+    try:
+        from chatbot_api.models import UserRegister
+        user = UserRegister.objects.get(chat_id=chat_id)
+        return user.username
+    except UserRegister.DoesNotExist:
+        return None
+    except Exception as e:
+        print(f"Erro ao buscar o nome do usuário {chat_id}: {e}")
+        return None
 
 class agent_service(): 
     """
@@ -11,8 +24,9 @@ class agent_service():
     """
     def __init__(self):
         self.registration_agent = Agent_register()
-        self.date_agent = Agent_date()
+        self.date_agent = Agent_date(router_agent_instance=self) 
         self.router_agent = Agent_router()
+        self.agent_consul_cancel = Agent_cancel()
         pass
 
     def router(self, history_str: str, chat_id: str) -> str:
@@ -27,28 +41,32 @@ class agent_service():
             response = ""
             
             if is_registered:
-                
+                user_name = get_user_name_from_db(chat_id)
                 if step_decode:
                     
                     if step_decode == 'AGENT_MARC_CONFIRM':
-                        response = self.date_agent.generate_date(history_str, chat_id)
+                        response = self.date_agent.generate_date(history_str, chat_id, user_name)
                     
                     elif step_decode == 'AGENT_CAN_VERIF':
-                        response = f"Chamando Agente de Consultas/Cancelamento (chat_id: {chat_id})" 
+                        response = self.agent_consul_cancel.generate_cancel(history_str, chat_id) 
                     return response
                         
                 else: 
-                    response = self.router_agent.route_intent(history_str)
+                    response = self.router_agent.route_intent(history_str, user_name)
                     if response == 'ativar_agent_marc':
                         update_session_state(chat_id, registration_step='AGENT_MARC_CONFIRM')
-                        response = self.date_agent.generate_date(history_str, chat_id)
+                        response = self.date_agent.generate_date(history_str, chat_id, user_name)
                         
                     elif response == 'ativar_agent_ver_cancel':
                         update_session_state(chat_id, registration_step='AGENT_CAN_VERIF')
-                        response = self.date_agent.generate_date(history_str, chat_id)
+                        response = self.agent_consul_cancel.generate_cancel(history_str, chat_id)
                     return response
             else:
-                LGPD_MESSAGE = "Olá! Para prosseguir, precisamos do seu nome completo para cadastro. Ao fornecer seu nome, você concorda que o utilizemos para fins de cadastro, atendimento (LGPD) e lembretes. Caso deseje solicitar a exclusão de seus dados no futuro, envie um email para exclusao@seusistema.com.br."
+                LGPD_MESSAGE = """
+                Olá! Para prosseguir, precisamos do seu nome completo para cadastro.
+                Ao fornecer seu nome, você concorda que o utilizemos para fins de cadastro, atendimento (LGPD) e lembretes. 
+                Caso deseje solicitar a exclusão de seus dados no futuro, envie um email para exclusao@seusistema.com.br.
+                """
 
                 if not step_decode:
                     update_session_state(chat_id, registration_step='WAITING_NAME')

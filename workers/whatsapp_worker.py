@@ -19,6 +19,7 @@ from chatbot_api.services.redis_client import (
     check_and_set_message_id
 )
 from chatbot_api.services.waha_api import Waha
+# 🟢 Importação de topo - Agora que o ciclo interno foi quebrado, isto funciona
 from chatbot_api.services.ia.ia_core import agent_service
 
 logging.basicConfig(
@@ -29,7 +30,8 @@ logger = logging.getLogger("whatsapp-worker")
 QUEUE_NAME = "new_user_queue"
 
 class WhatsAppWorker:
-    def __init__(self):
+    # 🟢 Construtor CORRIGIDO: Não aceita 'router_agent_instance'
+    def __init__(self): 
         self.redis_client = None
         self.setup_connections()
         self.redis_client = get_redis_client()
@@ -67,22 +69,15 @@ class WhatsAppWorker:
             if not check_and_set_message_id(message_id):
                 logger.warning(f"⚠️ Duplicata ID: {message_id} descartada pelo Worker (SETNX falhou).")
                 return 
-
-            if not chat_id:
-                logger.warning(f"Mensagem ID: {message_id} sem chat_id válido. Descartando.")
-                return
-
-            logger.info(f"Processando nova mensagem ID: {message_id} de {chat_id}")
+            
             add_message_to_history(chat_id, "User", message_text)
             history = get_recent_history(chat_id, limit=10)
             history_str = "\n".join(history)
             logger.info(f"{history_str}")
             response = self.service_agent.router(history_str, chat_id)
 
-            #if response == "SUCCESS_REGISTRATION":
-            #    final_bot_response = "Cadastro realizado com sucesso! Seja bem-vindo(a). Como posso te ajudar hoje?"
-            #    self.service_waha.send_whatsapp_message(chat_id, final_bot_response)
-            #    return 
+            if response == "COMPLETED":
+                return logger.info(f"Processamento de finalização para {chat_id} BEM-SUCEDIDO.")
             
             add_message_to_history(chat_id, "Bot", response)
             self.service_waha.send_whatsapp_message(chat_id, response) 
