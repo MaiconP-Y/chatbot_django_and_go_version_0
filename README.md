@@ -51,8 +51,8 @@ O projeto está focado em consolidar a funcionalidade completa da IA antes de in
 | :--- | :--- | :--- |
 | **Agente de Registro** | ✅ Funcional | Gerencia o fluxo de consentimento LGPD e registra o nome do usuário. |
 | **Agente Roteador** | ✅ Funcional | Detecta a intenção do usuário e direciona para o agente especializado. |
-| **Agente de Agendamento/Verificação** | 🚧 Em Desenvolvimento | Gerencia a verificação de horários disponíveis e a marcação de novas consultas no Google Calendar (requer Tool Calling). |
-| **Agente de Consulta/Cancelamento** | ❌ Pendente | Consultará consultas existentes e executará o cancelamento (próximo passo). |
+| **Agente de Agendamento/Verificação** | ✅ Funcional | Gerencia a verificação de horários disponíveis e a marcação de novas consultas no Google Calendar (requer Tool Calling). |
+| **Agente de Consulta/Cancelamento** | 🚧 Em Desenvolvimento | Consultará consultas existentes e executará o cancelamento (próximo passo). |
 
 ### 2. Observabilidade (Próxima Fase)
 
