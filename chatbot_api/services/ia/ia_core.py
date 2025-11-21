@@ -63,9 +63,9 @@ class agent_service():
                     return response
             else:
                 LGPD_MESSAGE = """
-                Olá! Para prosseguir, precisamos do seu nome completo para cadastro.
-                Ao fornecer seu nome, você concorda que o utilizemos para fins de cadastro, atendimento (LGPD) e lembretes. 
-                Caso deseje solicitar a exclusão de seus dados no futuro, envie um email para exclusao@seusistema.com.br.
+Olá! Para prosseguir e usar o assistente, precisamos do seu nome completo para cadastro.
+Ao fornecer seu nome, você concorda que o utilizemos para fins de cadastro, atendimento (LGPD) e lembretes. 
+Caso deseje solicitar a exclusão de seus dados no futuro, envie um email para exclusao@seusistema.com.br.
                 """
 
                 if not step_decode:

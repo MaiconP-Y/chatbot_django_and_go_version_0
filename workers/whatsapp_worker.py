@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Worker independente para processar fila do WhatsApp - VERSÃO COM FLUXO DO WEBHOOK FUNCIONAL
 """
@@ -30,7 +29,6 @@ logger = logging.getLogger("whatsapp-worker")
 QUEUE_NAME = "new_user_queue"
 
 class WhatsAppWorker:
-    # 🟢 Construtor CORRIGIDO: Não aceita 'router_agent_instance'
     def __init__(self): 
         self.redis_client = None
         self.setup_connections()
@@ -95,18 +93,15 @@ class WhatsAppWorker:
 
         while True:
             try:
-                # Otimização: BLPOP não-bloqueante (com timeout para permitir o encerramento limpo)
                 result = self.redis_client.blpop(queue_name, timeout=30) 
-                
                 if result:
                     raw_json_payload = result[1] 
                     logger.info(f"📨 Payload LIDO da fila persistente.")
                     self.process_incoming_message_data(raw_json_payload)
 
             except Exception as e:
-                # Se houver erro no BLPOP (ex: desconexão do Redis), registre o erro e espere um pouco.
                 logger.error(f"❌ Erro no loop de escuta (worker): {e}")
-                import time; time.sleep(5) # Espera antes de tentar reconectar/re-escutar
+                import time; time.sleep(5)
                 
     def run(self):
         logger.info("🚀 WhatsApp Worker INICIADO - Versão Corrigida")

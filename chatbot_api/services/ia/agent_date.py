@@ -9,8 +9,6 @@ from chatbot_api.services.services_agents.service_api_calendar import ServicesCa
 groq_service = Groq()
 services_calendar = ServicesCalendar()
 
-#################### SCHEMA CORRETO PARA TOOL CALLING #############################
-
 REGISTRATION_TOOL_SCHEMA = [
     {
         "type": "function", 
@@ -74,13 +72,12 @@ class Agent_date():
     Classe de serviço dedicada a interagir com a API da Groq, usando o histórico completo (history_str)
     para manter o contexto e delegar ações de registro via Tool Calling.
     """
-    def __init__(self, router_agent_instance): # 🟢 RECEBE a instância do roteador
+    def __init__(self, router_agent_instance):
         try:
             self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-            # Inicializa o serviço do Google Calendar (A tool pura)
             ServicesCalendar.inicializar_servico()
             self.calendar_services = ServicesCalendar()
-            self.router_agent = router_agent_instance # 🟢 Armazena a instância injetada
+            self.router_agent = router_agent_instance
         except Exception as e:
             raise EnvironmentError("A variável GROQ_API_KEY não está configurada.") from e
     
@@ -113,10 +110,9 @@ class Agent_date():
             resposta_ia = response_message.content
             
             if response_message.tool_calls:
-                # 🛠️ Mapeamento corrigido: Usando a função correta
                 available_functions = {
-                    "agendar_consulta_1h": ServicesCalendar.criar_evento, # Método estático
-                    "ver_horarios_disponiveis": ServicesCalendar.buscar_horarios_disponiveis, # Método estático
+                    "agendar_consulta_1h": ServicesCalendar.criar_evento,
+                    "ver_horarios_disponiveis": ServicesCalendar.buscar_horarios_disponiveis,
                     "delete_session_date": delete_session_date, 
                 }
                 
@@ -127,8 +123,7 @@ class Agent_date():
                     function_to_call = available_functions[function_name]
                     
                     function_args = json.loads(tool_call.function.arguments)
-                    
-                    # Se for a tool de reset, injeta o chat_id
+
                     if function_name == "delete_session_date":
                         function_args['chat_id'] = chat_id 
                         tool_result = function_to_call(**function_args)
@@ -136,20 +131,16 @@ class Agent_date():
                             return "Para responder eu preciso da sua pergunta novamente. Poderia mandar novamente?"
                         tool_content = "SUCCESS: Seção de agendamento resetada com sucesso."
                     
-                    # Para as funções do Calendar, o service deve ser passado como primeiro argumento
                     elif function_name in ["agendar_consulta_1h", "ver_horarios_disponiveis"]:
                         if not ServicesCalendar.service:
                             tool_content = "FALHA: O serviço do Google Calendar não foi inicializado."
                         elif function_name == "agendar_consulta_1h":
-                            function_args['chat_id'] = chat_id # <- A CORREÇÃO
-                                
-                            # Chama o método estático passando o objeto service real e os argumentos
+                            function_args['chat_id'] = chat_id
                             tool_content = function_to_call(
                                 ServicesCalendar.service, 
                                 **function_args
                             )
                         else:
-                            # ⚠️ Chama o método estático passando o objeto service real
                             tool_content = function_to_call(
                                 ServicesCalendar.service, 
                                 **function_args
