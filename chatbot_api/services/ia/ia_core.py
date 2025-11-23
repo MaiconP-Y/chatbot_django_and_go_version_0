@@ -62,8 +62,7 @@ class agent_service():
                         response = self.agent_consul_cancel.generate_cancel(history_str, chat_id)
                     return response
             else:
-                LGPD_MESSAGE = """
-Olá! Para prosseguir e usar o assistente, precisamos do seu nome completo para cadastro.
+                LGPD_MESSAGE = """Olá! Para prosseguir e usar o assistente, precisamos do seu nome completo para cadastro.
 Ao fornecer seu nome, você concorda que o utilizemos para fins de cadastro, atendimento (LGPD) e lembretes. 
 Caso deseje solicitar a exclusão de seus dados no futuro, envie um email para exclusao@seusistema.com.br.
                 """

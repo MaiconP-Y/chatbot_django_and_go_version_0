@@ -1,109 +1,112 @@
+# Arquivo: chatbot_api/services/ia/agent_consul_cancel.py
 import os
-import json 
+import json
 from groq import Groq
-from chatbot_api.services.services_agents.service_register import enviar_dados_user
-from chatbot_api.services.services_agents.prompts_agents import prompt_cancel
+from chatbot_api.services.services_agents.prompts_agents import prompt_consul_cancel
+from chatbot_api.services.services_agents.consulta_services import ConsultaService
 
-groq_service = Groq()
-
-REGISTRATION_TOOL_SCHEMA = {
-    "type": "function", 
-    "function": {
-        "name": "",
-        "description": "",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "chat_id": {
-                    "type": "string",
-                    "description": "O ID único do chat/usuário do WhatsApp. Essencial para o registro."
+# Definição das Ferramentas (Tools)
+TOOLS_CANCEL = [
+    {
+        "type": "function",
+        "function": {
+            "name": "cancelar_consulta",
+            "description": "Cancela uma consulta existente baseada no número identificador (ID UX) fornecido na lista.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "numero_consulta": {
+                        "type": "integer",
+                        "description": "O número da consulta (ex: 1, 2, 3) que aparece na lista [1]."
+                    }
                 },
-            },
-            "required": ["chat_id"] 
+                "required": ["numero_consulta"]
+            }
         }
     }
-}
+]
 
-class Agent_cancel():
-    """
-    Classe de serviço dedicada a interagir com a API da Groq, usando o histórico completo (history_str)
-    para manter o contexto e delegar ações de registro via Tool Calling.
-    """
+class Agent_cancel:
     def __init__(self):
         try:
             self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
         except Exception as e:
-            raise EnvironmentError("A variável GROQ_API_KEY não está configurada.") from e
+            raise EnvironmentError("GROQ_API_KEY não configurada.") from e
     
     def generate_cancel(self, history_str: str, chat_id: str) -> str:
-        """
-        Gera uma resposta da IA, usando a string do histórico completo como a última mensagem do usuário.
         
-        :param history_str: O histórico completo da conversa como uma string (User: ... \n Assistant: ...).
-        :return: A string de resposta gerada pela IA.
+        lista_consultas = ConsultaService.listar_agendamentos(chat_id)
+        
+        # --- NOVO: ETAPA DE FORMATAÇÃO PARA O LLM ---
+        if lista_consultas:
+            formatted_list = []
+            for item in lista_consultas:
+                # Cria a string no formato que o prompt espera: [NÚMERO] - Data: DD/MM/AAAA às HH:MM
+                formatted_list.append(
+                    f"[{item['appointment_number']}] - Data: {item['data']} às {item['hora']}"
+                )
+            consultas_str = "\n".join(formatted_list)
+        else:
+            consultas_str = "Nenhuma consulta agendada."
+        # ---------------------------------------------
+
+        # 2. Injeta os dados no prompt do sistema
+        system_prompt = f"""
+        {prompt_consul_cancel}
+        
+        --- DADOS EM TEMPO REAL ---
+        Aqui estão as consultas atuais deste usuário:
+        {consultas_str} 
+        ---------------------------
         """
         
         mensagens = [
-            {
-                "role": "system",
-                "content": prompt_cancel,
-            },
-            {
-                "role": "user",
-                "content": history_str
-            }
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": history_str}
         ]
         
         try:
+            # 3. Chamada LLM com Tools
             chat_completion = self.client.chat.completions.create(
                 messages=mensagens,
                 model="llama-3.3-70b-versatile",
-                tools=[REGISTRATION_TOOL_SCHEMA],
-                tool_choice="auto",
-                temperature=0.1 , 
+                temperature=0.1,
+                tools=TOOLS_CANCEL,
+                tool_choice="auto"
             )
-
+            
             response_message = chat_completion.choices[0].message
-            resposta_ia = response_message.content
             
             if response_message.tool_calls:
-                available_functions = {
-                    "enviar_dados_user": enviar_dados_user, 
-                }
+                tool_call = response_message.tool_calls[0]
+                function_name = tool_call.function.name
                 
-                mensagens.append(response_message)
-                
-                for tool_call in response_message.tool_calls:
-                    function_name = tool_call.function.name
-                    function_to_call = available_functions[function_name]
+                if function_name == "cancelar_consulta":
+                    args = json.loads(tool_call.function.arguments)
+                    numero = args.get("numero_consulta")
                     
-                    function_args = json.loads(tool_call.function.arguments)
-                    function_args['chat_id'] = chat_id 
+                    # Executa a lógica de negócio
+                    # **Nota:** Certifique-se de que ConsultaService implementa essa função.
+                    resultado = ConsultaService.cancelar_agendamento_por_id_ux(chat_id, numero)
                     
-                    registration_result = function_to_call(**function_args) 
-                    if registration_result == "SUCCESS_CANCEL": 
-                        return "COMPLETED"
-                    else:
-                        tool_content = "FALHA: Usuário já existe ou erro no banco de dados. Informe o usuário."                   
+                    # Retorna o resultado para a IA finalizar o diálogo
+                    mensagens.append(response_message)
+                    mensagens.append({
+                        "tool_call_id": tool_call.id,
+                        "role": "tool",
+                        "name": function_name,
+                        "content": resultado
+                    })
                     
-                    mensagens.append(
-                        {
-                            "tool_call_id": tool_call.id,
-                            "role": "tool", 
-                            "name": function_name,
-                            "content": f"Resultado da Ferramenta {function_name}: {tool_content}"
-                        }
+                    final_response = self.client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=mensagens
                     )
-                    
-                final_completion = self.client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=mensagens 
-                )
-            
-                return final_completion.choices[0].message.content
-            
-            return resposta_ia
+                    return final_response.choices[0].message.content
+
+            # Se não chamou ferramenta (apenas conversa)
+            return response_message.content
             
         except Exception as e:
-            print(f"Erro ao chamar a API da Groq: {e}")
-            return "Desculpe, estou tendo problemas técnicos para responder agora."
+            print(f"Erro no Agent Cancel: {e}")
+            return "Desculpe, tive um problema técnico ao verificar seus agendamentos."

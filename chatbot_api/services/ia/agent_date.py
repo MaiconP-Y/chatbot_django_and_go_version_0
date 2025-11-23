@@ -1,10 +1,11 @@
 import os
 import json 
 from groq import Groq
-from chatbot_api.services.redis_client import delete_session_date, delete_session_state
+from chatbot_api.services.redis_client import delete_session_date
 from chatbot_api.services.services_agents.prompts_agents import prompt_date
 # REMOVIDO: from chatbot_api.services.ia.ia_core import agent_service 
 from chatbot_api.services.services_agents.service_api_calendar import ServicesCalendar
+from chatbot_api.services.services_agents.consulta_services import ConsultaService
 
 groq_service = Groq()
 services_calendar = ServicesCalendar()
@@ -136,10 +137,50 @@ class Agent_date():
                             tool_content = "FALHA: O serviço do Google Calendar não foi inicializado."
                         elif function_name == "agendar_consulta_1h":
                             function_args['chat_id'] = chat_id
-                            tool_content = function_to_call(
-                                ServicesCalendar.service, 
-                                **function_args
-                            )
+                            
+                            LIMITE_AGENDAMENTOS_MSG = "Limite de agendamentos atingido. Você pode ter no máximo 2 consultas ativas."
+    
+                            # Chama o Google Calendar
+                            resultado_tool = function_to_call(ServicesCalendar.service, **function_args)
+                            
+                            if isinstance(resultado_tool, dict) and resultado_tool.get("status") == "SUCCESS":
+                                
+                                gcal_event_id = resultado_tool.get("event_id") # Armazena o ID para compensação
+                                
+                                try:
+                                    # Tenta salvar no DB (PODE LEVANTAR ValueError em caso de limite)
+                                    ConsultaService.criar_agendamento_db(
+                                        chat_id=chat_id,
+                                        google_event_id=gcal_event_id,
+                                        start_time_iso=resultado_tool.get("start_time") 
+                                    )
+                                    
+                                    # Sucesso no Google e no DB
+                                    tool_content = "Agendamento realizado e salvo com sucesso!"
+                                
+                                except ValueError as e:
+                                    # Intercepta o erro de negócio, incluindo a mensagem de limite
+                                    error_message = str(e)
+                                    
+                                    if LIMITE_AGENDAMENTOS_MSG in error_message:
+                                        # COMPENSAÇÃO: Deleta o evento que foi criado no Google Calendar
+                                        ServicesCalendar.deletar_evento(
+                                            ServicesCalendar.service, 
+                                            gcal_event_id
+                                        )
+                                        # **RETORNO DIRETO AO USUÁRIO**
+                                        return LIMITE_AGENDAMENTOS_MSG
+                                    else:
+                                        # Outro ValueError, retorna para o LLM processar
+                                        tool_content = f"Erro no salvamento do DB: {error_message}"
+                                
+                                except Exception as e:
+                                    # Erros genéricos de DB
+                                    tool_content = f"Erro desconhecido ao salvar agendamento: {str(e)}"
+
+                            else:
+                                # Falha na chamada inicial do Google Calendar
+                                tool_content = f"Erro no agendamento: {resultado_tool.get('message', 'Erro desconhecido')}"
                         else:
                             tool_content = function_to_call(
                                 ServicesCalendar.service, 

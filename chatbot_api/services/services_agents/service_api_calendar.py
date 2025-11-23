@@ -1,6 +1,6 @@
 import os
 import datetime
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 # --- IMPORTAÇÕES NECESSÁRIAS PARA O GOOGLE API ---
@@ -17,7 +17,7 @@ except ImportError:
         def Credentials(): pass
     def build(): pass
 
-
+BR_TIMEZONE = timezone(timedelta(hours=-3))
 # Configuração de Log
 logging.basicConfig(level=logging.INFO)
 
@@ -48,17 +48,24 @@ def gerar_horarios_disponiveis() -> list[str]:
 def is_slot_busy(slot_time_str: str, busy_blocks: list, data: str, duration_minutos: int) -> bool:
     """Verifica se o slot de agendamento (HH:MM) se sobrepõe a qualquer bloco ocupado."""
     # Assume fuso -03:00 para consistência
-    slot_start_dt = datetime.strptime(f"{data}T{slot_time_str}:00-03:00", "%Y-%m-%dT%H:%M:%S%z")
+    
+    # Tentativa de criar datetime com o offset, se a biblioteca `zoneinfo` não estiver disponível.
+    # O fuso aqui deve ser o mesmo usado na chamada freebusy, que é 'America/Sao_Paulo' (-03:00)
+    #slot_start_naive = datetime.strptime(f"{data}T{slot_time_str}:00", "%Y-%m-%dT%H:%M:%S")
+    
+    slot_start_dt = datetime.strptime(f"{data}T{slot_time_str}:00", "%Y-%m-%dT%H:%M:%S").replace(tzinfo=BR_TIMEZONE)
+    
     slot_end_dt = slot_start_dt + timedelta(minutes=duration_minutos)
     
     for block in busy_blocks:
         try:
-            busy_start_dt = datetime.strptime(block['start'], "%Y-%m-%dT%H:%M:%S%z")
-            busy_end_dt = datetime.strptime(block['end'], "%Y-%m-%dT%H:%M:%S%z")
+            # O horário retornado pela API FreeBusy JÁ ESTÁ em formato ISO 8601 com Z (UTC) ou offset.
+            busy_start_dt = datetime.fromisoformat(block['start'])
+            busy_end_dt = datetime.fromisoformat(block['end'])
         except ValueError:
             continue 
 
-        # Condição de sobreposição
+        # Condição de sobreposição: [Start1 < End2] AND [End1 > Start2]
         if slot_start_dt < busy_end_dt and slot_end_dt > busy_start_dt:
             return True
             
@@ -127,8 +134,6 @@ class ServicesCalendar:
                 singleEvents=True,
                 orderBy='startTime'
             ).execute()
-            print(events_result)
-            logging.info(events_result)
             return events_result.get('items', [])
             
         except Exception as e:
@@ -136,22 +141,25 @@ class ServicesCalendar:
 
 
     @staticmethod
-    def buscar_horarios_disponiveis(service, data: str, duracao_minutos: int = 60) -> str | list[str]:
+    def buscar_horarios_disponiveis(service, data: str, duracao_minutos: int = 60):
         """
         Calcula os horários disponíveis (livres) usando o endpoint freebusy do Google.
+        
+        Retorna um dicionário estruturado:
+        - Sucesso: {'status': 'SUCCESS', 'available_slots': ['07:00', '08:00', ...]}
+        - Erro:    {'status': 'ERROR', 'message': 'Mensagem de erro detalhada.'}
         """
-        # ... (Implementação de buscar_horarios_disponiveis - Sem alteração)
         try:
             # 1. Validação de data
             try:
                 data_obj = datetime.strptime(data, "%Y-%m-%d")
             except ValueError:
-                raise ToolException(f"Formato inválido para a data: '{data}'. Use 'YYYY-MM-DD'.")
+                return {"status": "ERROR", "message": f"Formato inválido para a data: '{data}'. Use 'YYYY-MM-DD'."}
 
             data_formatada = data_obj.strftime("%d-%m-%Y")
             mensagem_erro = validar_dia(data_formatada)
             if mensagem_erro:
-                raise ToolException(mensagem_erro)
+                return {"status": "ERROR", "message": mensagem_erro}
 
             # 2. Definição do intervalo de tempo (07:00 a 20:00)
             time_min = f'{data}T07:00:00-03:00'
@@ -177,15 +185,16 @@ class ServicesCalendar:
             ]
 
             if not livres:
-                return f"Não há horários disponíveis para {data}."
+                return {"status": "SUCCESS", "available_slots": [], "message": f"Não há horários disponíveis para {data}."}
 
-            return livres
+            # Retorno estruturado de sucesso
+            return {"status": "SUCCESS", "available_slots": livres}
             
         except ToolException as e:
-            return f"Erro na validação: {e}"
+            return {"status": "ERROR", "message": f"Erro na validação da ferramenta: {e}"}
         except Exception as e:
             logging.error(f"Erro inesperado no cálculo de disponibilidade (freebusy): {e}")
-            return f"Erro ao buscar horários disponíveis: {e}"
+            return {"status": "ERROR", "message": f"Erro inesperado ao buscar horários disponíveis: {e}"}
 
 
     @staticmethod
@@ -195,30 +204,22 @@ class ServicesCalendar:
         chat_id: str,
         summary: str = None, 
         time_zone: str = 'America/Sao_Paulo'
-    ) -> str:
+    ):
         """
         Cria um novo evento de 1 hora de duração (60 minutos) na agenda principal.
         
-        O 'summary' do evento usa o 'chat_id' para identificação do cliente.
-        
-        Args:
-            service: O objeto de serviço do Google Calendar autenticado.
-            start_time_str: Data e hora de início no formato 'YYYY-MM-DDTHH:MM:SS-03:00'.
-            chat_id: ID único do chat (ex: ID do WhatsApp) para identificação.
-            time_zone: Fuso horário (padrão é São Paulo).
-            
-        Returns:
-            O link HTML do evento criado.
+        Retorna um dicionário estruturado:
+        - Sucesso: {'status': 'SUCCESS', 'event_link': 'link_do_evento', 'start_time': 'YYYY-MM-DDTHH:MM:SS-03:00'}
+        - Erro:    {'status': 'ERROR', 'message': 'Mensagem de erro detalhada.'}
         """
         if not service:
-            raise ToolException("Erro: Objeto de serviço do Google Calendar não inicializado.")
+            return {"status": "ERROR", "message": "Erro: Objeto de serviço do Google Calendar não inicializado."}
 
         try:
             # 1. Converte a string de início em objeto datetime
-            # A string deve incluir o fuso horário (ex: -03:00) para funcionar corretamente.
             start_dt = datetime.fromisoformat(start_time_str)
         except ValueError:
-            raise ToolException(f"Formato inválido para start_time_str: '{start_time_str}'. Use o formato ISO 8601 completo (e.g., 'YYYY-MM-DDTHH:MM:SS-03:00').")
+            return {"status": "ERROR", "message": f"Formato inválido para start_time_str: '{start_time_str}'. Use o formato ISO 8601 completo (e.g., 'YYYY-MM-DDTHH:MM:SS-03:00')."}
 
         # 2. Define a duração de 60 minutos
         DURACAO_MINUTOS = 60
@@ -259,8 +260,41 @@ class ServicesCalendar:
             ).execute()
             
             logging.info(f"Evento criado: {event.get('htmlLink')}")
-            return event.get('htmlLink')
+            
+            # Retorno estruturado de sucesso
+            return {
+                "status": "SUCCESS", 
+                "event_link": event.get('htmlLink'), 
+                "event_id": event.get('id'),
+                "start_time": start_time_str
+            }
             
         except Exception as e:
             logging.error(f"Erro ao criar evento na agenda: {e}")
-            raise ToolException(f"Falha ao criar o evento na agenda: {e}")
+            # Retorno estruturado de erro
+            return {"status": "ERROR", "message": f"Falha ao criar o evento na agenda: {e}"}
+        
+    @staticmethod
+    def deletar_evento(service, event_id: str):
+        """
+        Deleta um evento do Google Calendar pelo ID.
+        """
+        if not service:
+            return {"status": "ERROR", "message": "Serviço de calendário não inicializado."}
+            
+        try:
+            service.events().delete(
+                calendarId=calendar_id, # Variável global definida no topo do arquivo original
+                eventId=event_id
+            ).execute()
+            
+            logging.info(f"Evento {event_id} deletado do Google Calendar com sucesso.")
+            return {"status": "SUCCESS", "message": "Evento cancelado no Google Calendar."}
+            
+        except Exception as e:
+            logging.error(f"Erro ao deletar evento {event_id}: {e}")
+            # Se o erro for 404 (já deletado) ou 410 (gone), consideramos sucesso para não travar o banco
+            if "404" in str(e) or "410" in str(e):
+                return {"status": "SUCCESS", "message": "Evento já não existia no Google Calendar."}
+                
+            return {"status": "ERROR", "message": f"Erro ao deletar evento: {e}"}
