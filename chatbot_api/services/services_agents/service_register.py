@@ -2,7 +2,6 @@ from chatbot_api.models import UserRegister
 from django.db import IntegrityError
 from chatbot_api.services.redis_client import delete_session_date
 import logging
-from chatbot_api.services.waha_api import Waha
 
 
 logging.basicConfig(
@@ -19,11 +18,8 @@ def enviar_dados_user(chat_id: str, name: str) -> UserRegister | None:
         )
         delete_session_date(chat_id)
         logger.info(f"Usuário {name} registrado com sucesso. ID: {new_user.chat_id}")
-        if new_user:
-            waha = Waha()
-            final_bot_response = f"Cadastro realizado com sucesso! Seja bem-vindo {name}. Como posso te ajudar hoje?"
-            waha.send_whatsapp_message(chat_id, final_bot_response)
-            return "SUCCESS_REGISTRATION" 
+        
+        return new_user
         
     except IntegrityError:
         print(f"⚠️ Usuário com chat_id {chat_id} já existe no sistema.")

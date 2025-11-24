@@ -85,8 +85,11 @@ class Agent_register():
                     function_args['chat_id'] = chat_id 
                     
                     registration_result = function_to_call(**function_args) 
-                    if registration_result == "SUCCESS_REGISTRATION": 
-                        return "COMPLETED"
+                    if registration_result: 
+                        tool_content = (
+                            f"SUCESSO: Usuário registrado. O nome dele é {registration_result.username}. "
+                            "Gere a mensagem de boas-vindas: 'Cadastro realizado com sucesso! Seja bem-vindo (chame-o pelo nome). Como posso te ajudar hoje?'"
+                        )
                     else:
                         tool_content = "FALHA: Usuário já existe ou erro no banco de dados. Informe o usuário."                   
                     

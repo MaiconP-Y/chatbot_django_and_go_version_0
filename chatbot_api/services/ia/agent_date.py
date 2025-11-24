@@ -1,7 +1,7 @@
 import os
 import json 
 from groq import Groq
-from chatbot_api.services.redis_client import delete_session_date
+from chatbot_api.services.services_agents.tool_reset import finalizar_user, REROUTE_COMPLETED_STATUS
 from chatbot_api.services.services_agents.prompts_agents import prompt_date
 # REMOVIDO: from chatbot_api.services.ia.ia_core import agent_service 
 from chatbot_api.services.services_agents.service_api_calendar import ServicesCalendar
@@ -14,7 +14,7 @@ REGISTRATION_TOOL_SCHEMA = [
     {
         "type": "function", 
         "function": {
-            "name": "delete_session_date",
+            "name": "finalizar_user",
             "description": "Função utilizada para resetar seção. Deve ser chamada se o usuário pedir para cancelar o agendamento ou começar do zero.",
             "parameters": {
                 "type": "object",
@@ -23,8 +23,13 @@ REGISTRATION_TOOL_SCHEMA = [
                         "type": "string",
                         "description": "O ID único do chat/usuário do WhatsApp. Essencial para o registro."
                     },
+                    # 👈 CORREÇÃO: ADICIONAR history_str aqui
+                    "history_str": { 
+                        "type": "string",
+                        "description": "O histórico completo da conversa até o momento, para re-roteamento."
+                    },
                 },
-                "required": ["chat_id"] 
+                "required": ["history_str","chat_id"] 
             }
         }
     },
@@ -104,7 +109,7 @@ class Agent_date():
                 model="llama-3.3-70b-versatile",
                 tools=REGISTRATION_TOOL_SCHEMA, 
                 tool_choice="auto",
-                temperature=0.1 , 
+                temperature=0.0 , 
             )
 
             response_message = chat_completion.choices[0].message
@@ -114,7 +119,7 @@ class Agent_date():
                 available_functions = {
                     "agendar_consulta_1h": ServicesCalendar.criar_evento,
                     "ver_horarios_disponiveis": ServicesCalendar.buscar_horarios_disponiveis,
-                    "delete_session_date": delete_session_date, 
+                    "finalizar_user": finalizar_user, 
                 }
                 
                 mensagens.append(response_message)
@@ -125,12 +130,15 @@ class Agent_date():
                     
                     function_args = json.loads(tool_call.function.arguments)
 
-                    if function_name == "delete_session_date":
-                        function_args['chat_id'] = chat_id 
-                        tool_result = function_to_call(**function_args)
-                        if tool_result == "SUCCESS_RESET":        
-                            return "Para responder eu preciso da sua pergunta novamente. Poderia mandar novamente?"
-                        tool_content = "SUCCESS: Seção de agendamento resetada com sucesso."
+                    if function_name in ["finalizar_user"]:
+                        
+                        response_from_tool = finalizar_user(**function_args)
+                        if response_from_tool.startswith(f"{REROUTE_COMPLETED_STATUS}|"):
+                            function_args['history_str'] = history_str
+                            function_args['chat_id'] = chat_id
+                            tool_content = finalizar_user(**function_args)
+                            return tool_content
+                        tool_content = response_from_tool
                     
                     elif function_name in ["agendar_consulta_1h", "ver_horarios_disponiveis"]:
                         if not ServicesCalendar.service:

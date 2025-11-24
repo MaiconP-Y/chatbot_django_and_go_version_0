@@ -20,6 +20,7 @@ from chatbot_api.services.redis_client import (
 from chatbot_api.services.waha_api import Waha
 # 🟢 Importação de topo - Agora que o ciclo interno foi quebrado, isto funciona
 from chatbot_api.services.ia.ia_core import agent_service
+from chatbot_api.services.services_agents.tool_reset import REROUTE_COMPLETED_STATUS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -74,8 +75,19 @@ class WhatsAppWorker:
             logger.info(f"{history_str}")
             response = self.service_agent.router(history_str, chat_id)
 
-            if response == "COMPLETED":
-                return logger.info(f"Processamento de finalização para {chat_id} BEM-SUCEDIDO.")
+            if response.startswith(REROUTE_COMPLETED_STATUS):
+                # A Tool de reset já foi executada, o estado já foi limpo e o router 
+                # já gerou a nova mensagem de boas-vindas.
+                
+                # 3. Extrai a mensagem final: "REROUTE_COMPLETED|Nova Mensagem"
+                _, final_bot_response = response.split('|', 1) 
+                
+                # 4. Envia a resposta (apenas a mensagem limpa)
+                self.service_waha.send_whatsapp_message(chat_id, final_bot_response)
+                
+                logger.info(f"Processamento de RE-ROTEAMENTO BEM-SUCEDIDO para {chat_id}. Worker finalizado.")
+                # 5. Para o fluxo do Worker AQUI.
+                return
             
             add_message_to_history(chat_id, "Bot", response)
             self.service_waha.send_whatsapp_message(chat_id, response) 

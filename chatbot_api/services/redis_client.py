@@ -130,10 +130,12 @@ def delete_history(chat_id: str):
     r.delete(get_history_key(chat_id))
     logger.info(f"🗑️ Histórico de conversas DELETADO para {chat_id}.")
 
-def delete_session_date(chat_id: str):
-    """Remove o histórico e o estado de sessão, usado como ferramenta de reset de fluxo."""
+def delete_session_date(chat_id: str) -> bool:
+    """Remove o estado de sessão temporário e o histórico do usuário."""
     r = get_redis_client()
-    r.delete(get_history_key(chat_id))
-    r.delete(get_session_key(chat_id))
-    logger.info(f"🗑️ Estado de sessão e Histórico de conversas DELETADO para {chat_id}.")
-    return "SUCCESS_RESET"
+    
+    # Exclui tanto o estado quanto o histórico (melhor otimização com um único .delete)
+    keys_deleted = r.delete(get_session_key(chat_id), get_history_key(chat_id))
+    
+    # ✅ BOA PRÁTICA: Retorna True se a operação foi um sucesso (pelo menos uma chave deletada)
+    return keys_deleted > 0
