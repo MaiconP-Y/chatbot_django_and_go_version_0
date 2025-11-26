@@ -131,14 +131,23 @@ class Agent_date():
                     function_args = json.loads(tool_call.function.arguments)
 
                     if function_name in ["finalizar_user"]:
+                        # 1. Injeção de Dependência Segura: 
+                        # Garantimos que chat_id e history_str venham do contexto do Python, 
+                        # não confiamos apenas na alucinação do JSON do LLM.
+                        function_args['history_str'] = history_str
+                        function_args['chat_id'] = chat_id
                         
-                        response_from_tool = finalizar_user(**function_args)
-                        if response_from_tool.startswith(f"{REROUTE_COMPLETED_STATUS}|"):
-                            function_args['history_str'] = history_str
-                            function_args['chat_id'] = chat_id
-                            tool_content = finalizar_user(**function_args)
-                            return tool_content
-                        tool_content = response_from_tool
+                        # 2. Execução: Chamamos a função
+                        result_output = finalizar_user(**function_args)
+                        
+                        # 3. Check de "Short-Circuit" (Go Way):
+                        # Se houve reroute, cortamos o fluxo aqui e retornamos a resposta do novo agente imediatamente.
+                        if result_output.startswith(f"{REROUTE_COMPLETED_STATUS}|"):
+                            return result_output
+                        
+                        tool_content = result_output
+                        
+                        
                     
                     elif function_name in ["agendar_consulta_1h", "ver_horarios_disponiveis"]:
                         if not ServicesCalendar.service:

@@ -1,23 +1,39 @@
-# Arquivo: chatbot_api/services/ia/agent_consul_cancel.py
 import os
 import json
 from groq import Groq
 from chatbot_api.services.services_agents.prompts_agents import prompt_consul_cancel
 from chatbot_api.services.services_agents.consulta_services import ConsultaService
+# 1. Importações Necessárias para o Reset
+from chatbot_api.services.services_agents.tool_reset import finalizar_user, REROUTE_COMPLETED_STATUS
 
-# Definição das Ferramentas (Tools)
+# 2. Definição Unificada das Tools
 TOOLS_CANCEL = [
     {
         "type": "function",
         "function": {
+            "name": "finalizar_user",
+            "description": "Função utilizada para resetar sessão/voltar ao menu. Deve ser chamada se o usuário mudar de assunto ou pedir para sair.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "chat_id": { "type": "string", "description": "ID do usuário." },
+                    "history_str": { "type": "string", "description": "Histórico para re-roteamento." },
+                },
+                "required": ["history_str", "chat_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "cancelar_consulta",
-            "description": "Cancela uma consulta existente baseada no número identificador (ID UX) fornecido na lista.",
+            "description": "Cancela uma consulta existente baseada no número identificador (ID UX).",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "numero_consulta": {
                         "type": "integer",
-                        "description": "O número da consulta (ex: 1, 2, 3) que aparece na lista [1]."
+                        "description": "O número da consulta (ex: 1, 2) que aparece na lista [1]."
                     }
                 },
                 "required": ["numero_consulta"]
@@ -35,22 +51,20 @@ class Agent_cancel:
     
     def generate_cancel(self, history_str: str, chat_id: str) -> str:
         
+        # --- Prepara Dados (Lógica de Negócio) ---
         lista_consultas = ConsultaService.listar_agendamentos(chat_id)
         
-        # --- NOVO: ETAPA DE FORMATAÇÃO PARA O LLM ---
         if lista_consultas:
             formatted_list = []
             for item in lista_consultas:
-                # Cria a string no formato que o prompt espera: [NÚMERO] - Data: DD/MM/AAAA às HH:MM
                 formatted_list.append(
                     f"[{item['appointment_number']}] - Data: {item['data']} às {item['hora']}"
                 )
             consultas_str = "\n".join(formatted_list)
         else:
             consultas_str = "Nenhuma consulta agendada."
-        # ---------------------------------------------
-
-        # 2. Injeta os dados no prompt do sistema
+        
+        # --- Monta Prompt ---
         system_prompt = f"""
         {prompt_consul_cancel}
         
@@ -66,47 +80,66 @@ class Agent_cancel:
         ]
         
         try:
-            # 3. Chamada LLM com Tools
+            # --- Chamada LLM ---
             chat_completion = self.client.chat.completions.create(
                 messages=mensagens,
                 model="llama-3.3-70b-versatile",
                 temperature=0.1,
-                tools=TOOLS_CANCEL,
+                tools=TOOLS_CANCEL, # Schema atualizado
                 tool_choice="auto"
             )
             
             response_message = chat_completion.choices[0].message
             
+            # --- Processamento de Tools ---
             if response_message.tool_calls:
-                tool_call = response_message.tool_calls[0]
-                function_name = tool_call.function.name
-                
-                if function_name == "cancelar_consulta":
+                mensagens.append(response_message) # Adiciona contexto para a próxima volta (se houver)
+
+                for tool_call in response_message.tool_calls:
+                    function_name = tool_call.function.name
                     args = json.loads(tool_call.function.arguments)
-                    numero = args.get("numero_consulta")
                     
-                    # Executa a lógica de negócio
-                    # **Nota:** Certifique-se de que ConsultaService implementa essa função.
-                    resultado = ConsultaService.cancelar_agendamento_por_id_ux(chat_id, numero)
+                    # === BLOCO DE RESET (Padrão Go Way / Fail Fast) ===
+                    if function_name == "finalizar_user":
+                        # Injeção segura de dependências
+                        args['history_str'] = history_str
+                        args['chat_id'] = chat_id
+                        
+                        result_output = finalizar_user(**args)
+                        
+                        # Se for um reroute, RETORNA IMEDIATAMENTE a string bruta para o Worker
+                        if result_output.startswith(f"{REROUTE_COMPLETED_STATUS}|"):
+                            return result_output
+                        
+                        tool_content = result_output
+
+                    # === BLOCO DE CANCELAMENTO ===
+                    elif function_name == "cancelar_consulta":
+                        numero = args.get("numero_consulta")
+                        tool_content = ConsultaService.cancelar_agendamento_por_id_ux(chat_id, numero)
                     
-                    # Retorna o resultado para a IA finalizar o diálogo
-                    mensagens.append(response_message)
+                    else:
+                        tool_content = "Erro: Ferramenta desconhecida."
+
+                    # Adiciona resultado ao histórico
                     mensagens.append({
                         "tool_call_id": tool_call.id,
                         "role": "tool",
                         "name": function_name,
-                        "content": resultado
+                        "content": str(tool_content)
                     })
                     
-                    final_response = self.client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=mensagens
-                    )
-                    return final_response.choices[0].message.content
+                # Segunda chamada ao LLM (apenas se não houve return no bloco de reset)
+                final_response = self.client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=mensagens
+                )
+                return final_response.choices[0].message.content
 
-            # Se não chamou ferramenta (apenas conversa)
+            # Se não houve tool calls, retorna texto normal
             return response_message.content
             
         except Exception as e:
             print(f"Erro no Agent Cancel: {e}")
-            return "Desculpe, tive um problema técnico ao verificar seus agendamentos."
+            # Em caso de erro crítico, tenta um failover gracioso
+            return "Desculpe, tive um problema técnico. Tente digitar 'menu' para reiniciar."
