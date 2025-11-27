@@ -99,21 +99,15 @@ class Agent_cancel:
                     function_name = tool_call.function.name
                     args = json.loads(tool_call.function.arguments)
                     
-                    # === BLOCO DE RESET (Padrão Go Way / Fail Fast) ===
                     if function_name == "finalizar_user":
-                        # Injeção segura de dependências
                         args['history_str'] = history_str
-                        args['chat_id'] = chat_id
-                        
+                        args['chat_id'] = chat_id    
                         result_output = finalizar_user(**args)
-                        
-                        # Se for um reroute, RETORNA IMEDIATAMENTE a string bruta para o Worker
                         if result_output.startswith(f"{REROUTE_COMPLETED_STATUS}|"):
                             return result_output
                         
                         tool_content = result_output
 
-                    # === BLOCO DE CANCELAMENTO ===
                     elif function_name == "cancelar_consulta":
                         numero = args.get("numero_consulta")
                         tool_content = ConsultaService.cancelar_agendamento_por_id_ux(chat_id, numero)
@@ -121,7 +115,6 @@ class Agent_cancel:
                     else:
                         tool_content = "Erro: Ferramenta desconhecida."
 
-                    # Adiciona resultado ao histórico
                     mensagens.append({
                         "tool_call_id": tool_call.id,
                         "role": "tool",
@@ -129,17 +122,14 @@ class Agent_cancel:
                         "content": str(tool_content)
                     })
                     
-                # Segunda chamada ao LLM (apenas se não houve return no bloco de reset)
                 final_response = self.client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=mensagens
                 )
                 return final_response.choices[0].message.content
 
-            # Se não houve tool calls, retorna texto normal
             return response_message.content
             
         except Exception as e:
             print(f"Erro no Agent Cancel: {e}")
-            # Em caso de erro crítico, tenta um failover gracioso
             return "Desculpe, tive um problema técnico. Tente digitar 'menu' para reiniciar."

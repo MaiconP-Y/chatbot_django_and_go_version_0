@@ -3,7 +3,6 @@ import json
 from groq import Groq
 from chatbot_api.services.services_agents.tool_reset import finalizar_user, REROUTE_COMPLETED_STATUS
 from chatbot_api.services.services_agents.prompts_agents import prompt_date
-# REMOVIDO: from chatbot_api.services.ia.ia_core import agent_service 
 from chatbot_api.services.services_agents.service_api_calendar import ServicesCalendar
 from chatbot_api.services.services_agents.consulta_services import ConsultaService
 
@@ -23,7 +22,6 @@ REGISTRATION_TOOL_SCHEMA = [
                         "type": "string",
                         "description": "O ID único do chat/usuário do WhatsApp. Essencial para o registro."
                     },
-                    # 👈 CORREÇÃO: ADICIONAR history_str aqui
                     "history_str": { 
                         "type": "string",
                         "description": "O histórico completo da conversa até o momento, para re-roteamento."
@@ -131,17 +129,11 @@ class Agent_date():
                     function_args = json.loads(tool_call.function.arguments)
 
                     if function_name in ["finalizar_user"]:
-                        # 1. Injeção de Dependência Segura: 
-                        # Garantimos que chat_id e history_str venham do contexto do Python, 
-                        # não confiamos apenas na alucinação do JSON do LLM.
                         function_args['history_str'] = history_str
                         function_args['chat_id'] = chat_id
-                        
-                        # 2. Execução: Chamamos a função
+
                         result_output = finalizar_user(**function_args)
-                        
-                        # 3. Check de "Short-Circuit" (Go Way):
-                        # Se houve reroute, cortamos o fluxo aqui e retornamos a resposta do novo agente imediatamente.
+                
                         if result_output.startswith(f"{REROUTE_COMPLETED_STATUS}|"):
                             return result_output
                         
@@ -157,46 +149,35 @@ class Agent_date():
                             
                             LIMITE_AGENDAMENTOS_MSG = "Limite de agendamentos atingido. Você pode ter no máximo 2 consultas ativas."
     
-                            # Chama o Google Calendar
                             resultado_tool = function_to_call(ServicesCalendar.service, **function_args)
                             
                             if isinstance(resultado_tool, dict) and resultado_tool.get("status") == "SUCCESS":
-                                
-                                gcal_event_id = resultado_tool.get("event_id") # Armazena o ID para compensação
+                                gcal_event_id = resultado_tool.get("event_id")
                                 
                                 try:
-                                    # Tenta salvar no DB (PODE LEVANTAR ValueError em caso de limite)
                                     ConsultaService.criar_agendamento_db(
                                         chat_id=chat_id,
                                         google_event_id=gcal_event_id,
                                         start_time_iso=resultado_tool.get("start_time") 
                                     )
-                                    
-                                    # Sucesso no Google e no DB
                                     tool_content = "Agendamento realizado e salvo com sucesso!"
                                 
                                 except ValueError as e:
-                                    # Intercepta o erro de negócio, incluindo a mensagem de limite
                                     error_message = str(e)
                                     
                                     if LIMITE_AGENDAMENTOS_MSG in error_message:
-                                        # COMPENSAÇÃO: Deleta o evento que foi criado no Google Calendar
                                         ServicesCalendar.deletar_evento(
                                             ServicesCalendar.service, 
                                             gcal_event_id
                                         )
-                                        # **RETORNO DIRETO AO USUÁRIO**
                                         return LIMITE_AGENDAMENTOS_MSG
                                     else:
-                                        # Outro ValueError, retorna para o LLM processar
                                         tool_content = f"Erro no salvamento do DB: {error_message}"
                                 
                                 except Exception as e:
-                                    # Erros genéricos de DB
                                     tool_content = f"Erro desconhecido ao salvar agendamento: {str(e)}"
 
                             else:
-                                # Falha na chamada inicial do Google Calendar
                                 tool_content = f"Erro no agendamento: {resultado_tool.get('message', 'Erro desconhecido')}"
                         else:
                             tool_content = function_to_call(
