@@ -1,12 +1,11 @@
-from chatbot_api.services.redis_client import delete_session_date, add_message_to_history # IMPORTAR add_message_to_history
+from chatbot_api.services.redis_client import delete_session_state, delete_history, add_message_to_history
 
 REROUTE_COMPLETED_STATUS = "REROUTE_COMPLETED"
 
 def finalizar_user(history_str: str, chat_id: str):
     from chatbot_api.services.ia.ia_core import agent_service
-    
-    # 1. Limpeza de Estado
-    sucess = delete_session_date(chat_id)
+    delete_session_state(chat_id) 
+    delete_history(chat_id)
     
     # --- Extração da última mensagem do Usuário ---
     history_lines = history_str.split('\n')
@@ -24,8 +23,7 @@ def finalizar_user(history_str: str, chat_id: str):
     # O Router PRECISA do prefixo "User: " para saber quem está falando.
     clean_context_for_router = f"User: {last_user_message_content}"
     print(history_str)
-    try:
-        print(sucess)      
+    try:    
         service_agent = agent_service()
         
         # 2. Chama o roteador com o CONTEXTO LIMPO E FORMATADO

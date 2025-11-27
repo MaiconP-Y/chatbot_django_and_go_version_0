@@ -4,6 +4,7 @@ from chatbot_api.services.ia.agent_register import Agent_register
 from chatbot_api.services.ia.agent_date import Agent_date
 from chatbot_api.services.ia.agent_router import Agent_router
 from chatbot_api.services.ia.agent_consul_cancel import Agent_cancel
+from chatbot_api.services.ia.agent_info import Agent_info
 
 def get_user_name_from_db(chat_id: str) -> str | None:
     """Busca o nome do usuário no banco de dados Django."""
@@ -27,6 +28,7 @@ class agent_service():
         self.date_agent = Agent_date(router_agent_instance=self) 
         self.router_agent = Agent_router()
         self.agent_consul_cancel = Agent_cancel()
+        self.agent_info = Agent_info()
         pass
 
     def router(self, history_str: str, chat_id: str) -> str:
@@ -60,6 +62,8 @@ class agent_service():
                     elif response == 'ativar_agent_ver_cancel':
                         update_session_state(chat_id, registration_step='AGENT_CAN_VERIF')
                         response = self.agent_consul_cancel.generate_cancel(history_str, chat_id)
+                    elif response == 'ativar_agent_info':
+                        response = self.agent_info.generate_info(history_str, user_name)
                     return response
             else:
                 LGPD_MESSAGE = """Olá! Para prosseguir e usar o assistente, precisamos do seu nome completo para cadastro.
