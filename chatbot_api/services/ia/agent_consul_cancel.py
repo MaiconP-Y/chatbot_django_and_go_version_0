@@ -3,8 +3,8 @@ import json
 from groq import Groq
 from chatbot_api.services.services_agents.prompts_agents import prompt_consul_cancel
 from chatbot_api.services.services_agents.consulta_services import ConsultaService
-# 1. Importações Necessárias para o Reset
 from chatbot_api.services.services_agents.tool_reset import finalizar_user, REROUTE_COMPLETED_STATUS
+from chatbot_api.services.redis_client import delete_history, delete_session_state
 
 # 2. Definição Unificada das Tools
 TOOLS_CANCEL = [
@@ -111,6 +111,10 @@ class Agent_cancel:
                     elif function_name == "cancelar_consulta":
                         numero = args.get("numero_consulta")
                         tool_content = ConsultaService.cancelar_agendamento_por_id_ux(chat_id, numero)
+                        if tool_content:
+                            delete_session_state(chat_id)
+                            delete_history(chat_id)
+                            return f"{REROUTE_COMPLETED_STATUS}|Sua consulta foi cancelada com sucesso! Qualquer duvida é só chamar!"
                     
                     else:
                         tool_content = "Erro: Ferramenta desconhecida."
