@@ -139,97 +139,88 @@ class Agent_date():
                         if result_output.startswith(f"{REROUTE_COMPLETED_STATUS}|"):
                             return result_output
                         
-                        tool_content = result_output
+                        tool_content = result_output    
                         
+                    elif function_name == "agendar_consulta_1h":
+                        function_args['chat_id'] = chat_id
                         
-                    
-                    elif function_name in ["agendar_consulta_1h", "ver_horarios_disponiveis"]:
-                        if not ServicesCalendar.service:
-                            tool_content = "FALHA: O serviço do Google Calendar não foi inicializado."
-                        elif function_name == "agendar_consulta_1h":
-                            function_args['chat_id'] = chat_id
-                            
-                            LIMITE_AGENDAMENTOS_MSG = "Limite de agendamentos atingido. Você pode ter no máximo 2 consultas ativas."
+                        LIMITE_AGENDAMENTOS_MSG = "Limite de agendamentos atingido. Você pode ter no máximo 2 consultas ativas."
 
-                            resultado_tool = function_to_call(ServicesCalendar.service, **function_args)
+                        resultado_tool = function_to_call(ServicesCalendar.service, **function_args)
+                        
+                        if isinstance(resultado_tool, dict) and resultado_tool.get("status") == "SUCCESS":
+                            gcal_event_id = resultado_tool.get("event_id")
+                            start_time_iso = resultado_tool.get("start_time")
                             
-                            if isinstance(resultado_tool, dict) and resultado_tool.get("status") == "SUCCESS":
-                                gcal_event_id = resultado_tool.get("event_id")
-                                start_time_iso = resultado_tool.get("start_time")
-                                
-                                try:
-                                    ConsultaService.criar_agendamento_db(
-                                        chat_id=chat_id,
-                                        google_event_id=gcal_event_id,
-                                        start_time_iso=start_time_iso 
-                                    )
+                            try:
+                                ConsultaService.criar_agendamento_db(
+                                    chat_id=chat_id,
+                                    google_event_id=gcal_event_id,
+                                    start_time_iso=start_time_iso 
+                                )
 
-                                    dt_obj = datetime.fromisoformat(start_time_iso)
-                                    data_formatada = dt_obj.strftime("%d/%m/%Y")
-                                    hora_formatada = dt_obj.strftime("%H:%M")
-                                    delete_session_state(chat_id)
-                                    delete_history(chat_id)
-                            
-                                    return (f"""{REROUTE_COMPLETED_STATUS}|Agendamento Confirmado, {user_name}
+                                dt_obj = datetime.fromisoformat(start_time_iso)
+                                data_formatada = dt_obj.strftime("%d/%m/%Y")
+                                hora_formatada = dt_obj.strftime("%H:%M")
+                                delete_session_state(chat_id)
+                                delete_history(chat_id)
+                        
+                                return (f"""{REROUTE_COMPLETED_STATUS}|Agendamento Confirmado, {user_name}
 Sua consulta foi marcada com sucesso para o dia *{data_formatada}* às {hora_formatada}.
 Fique tranquilo(a), enviaremos um lembrete próximo ao dia do evento.
 """
-                                    )
-                                
-                                
-                                except ValueError as e:
-                                    error_message = str(e)
-                                    
-                                    if LIMITE_AGENDAMENTOS_MSG in error_message:
-                                        ServicesCalendar.deletar_evento(
-                                            ServicesCalendar.service, 
-                                            gcal_event_id
-                                        )
-                                        return LIMITE_AGENDAMENTOS_MSG
-                                    else:
-                                        tool_content = f"Erro no salvamento do DB: {error_message}"
-                                
-                                except Exception as e:
-                                    tool_content = f"Erro desconhecido ao salvar agendamento: {str(e)}"
-
-                            else:
-                                tool_content = f"Erro no agendamento: {resultado_tool.get('message', 'Erro desconhecido')}"
-                        
-                        elif function_name == "ver_horarios_disponiveis":
-                            resultado_tool = ServicesCalendar.buscar_horarios_disponiveis(ServicesCalendar.service, **function_args)
+                                )
                             
-                            if isinstance(resultado_tool, dict) and resultado_tool.get("status") == "SUCCESS":
-                                available_slots = resultado_tool.get("available_slots", [])
+                            
+                            except ValueError as e:
+                                error_message = str(e)
                                 
-                                data = function_args.get("data")
-                                try:
-                                    data_formatada = datetime.strptime(data, "%Y-%m-%d").strftime("%d/%m/%Y")
-                                except ValueError:
-                                    data_formatada = data
-                                
-                                if not available_slots:
-                                    # ✅ Retorno Direto de Aviso (Sem slots)
-                                    return (
-                                        f"Nenhum horário disponível em **{data_formatada}**.\n\n"
-                                        f"Informe outra data para verificar (AAAA-MM-DD)."
+                                if LIMITE_AGENDAMENTOS_MSG in error_message:
+                                    ServicesCalendar.deletar_evento(
+                                        ServicesCalendar.service, 
+                                        gcal_event_id
                                     )
+                                    return LIMITE_AGENDAMENTOS_MSG
                                 else:
-                                    # ✅ Retorno Direto de Sucesso (Com slots)
-                                    slots_str = "\n".join([f"  - {slot}" for slot in available_slots])
-                                    
-                                    return (f"""Os Horários disponíveis em *{data_formatada}*:
+                                    tool_content = f"Erro no salvamento do DB: {error_message}"
+                            
+                            except Exception as e:
+                                tool_content = f"Erro desconhecido ao salvar agendamento: {str(e)}"
+
+                        else:
+                            tool_content = f"Erro no agendamento: {resultado_tool.get('message', 'Erro desconhecido')}"
+                    
+                    elif function_name == "ver_horarios_disponiveis":
+                        resultado_tool = ServicesCalendar.buscar_horarios_disponiveis(ServicesCalendar.service, **function_args)
+                        
+                        if isinstance(resultado_tool, dict) and resultado_tool.get("status") == "SUCCESS":
+                            available_slots = resultado_tool.get("available_slots", [])
+                            
+                            data = function_args.get("data")
+                            try:
+                                data_formatada = datetime.strptime(data, "%Y-%m-%d").strftime("%d/%m/%Y")
+                            except ValueError:
+                                data_formatada = data
+                            
+                            if not available_slots:
+                                # ✅ Retorno Direto de Aviso (Sem slots)
+                                return (
+                                    f"Nenhum horário disponível em **{data_formatada}**.\n\n"
+                                    f"Informe outra data para verificar (AAAA-MM-DD)."
+                                )
+                            else:
+                                # ✅ Retorno Direto de Sucesso (Com slots)
+                                slots_str = "\n".join([f"  - {slot}" for slot in available_slots])
+                                
+                                return (f"""Os Horários disponíveis em *{data_formatada}*:
 {slots_str}
 Qual horário deseja agendar?
-                                    """
-                                    )         
-                            else:
-                                error_message = resultado_tool.get('message', 'Erro desconhecido ao verificar horários.')
-                                return f"❌ Falha ao verificar horários: {error_message}\n\nInforme uma nova data (AAAA-MM-DD)."
+                                """
+                                )         
                         else:
-                            tool_content = function_to_call(
-                                ServicesCalendar.service, 
-                                **function_args
-                            )
+                            error_message = resultado_tool.get('message', 'Erro desconhecido ao verificar horários.')
+                            return f"❌ Falha ao verificar horários: {error_message}\n\nInforme uma nova data (AAAA-MM-DD)."
+        
                     
                     mensagens.append(
                         {
