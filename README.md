@@ -2,7 +2,7 @@
 
 **Protótipo de Produção Ativa:** Otimizado para **Resiliência**, **Segurança** (HMAC/ID Check), **Observabilidade** e **Alta Concorrência**.
 
-Este sistema gerencia sessões e interações de WhatsApp (via WAHA) através de uma arquitetura híbrida de microserviços (Go + Python/Django). O foco principal é a **Garantia de Entrega** e a execução confiável de **LLM Agents (Tool Calling)** para tarefas de negócio.
+Este sistema gerencia sessões e interações de WhatsApp (via WAHA) através de uma arquitetura híbrida de microserviços (Go + Python/Django). O foco principal é a **Garantia de Entrega** e a execução confiável de **LLM Agents (Tool Calling)** para tarefas de negócio, priorizando a **baixa latência**.
 
 ---
 
@@ -16,7 +16,7 @@ O projeto utiliza um **pipeline de processamento assíncrono (Go Way)** para des
 | **Segurança/Integridade** | **Blindagem de Mensagem** | Worker Python utiliza **Redis SETNX** (TTL 60s) para **prevenir o processamento duplicado** de webhooks (`message_id` check). |
 | **Resiliência de Rede** | **Reverse Proxy Robusto (NGINX)** | Implementa **Rate Limiting** (burst/nodelay) e utiliza **Resolução Dinâmica de DNS** (`resolve` a cada 5s). |
 | **Comunicação/Fila** | **Mensageria Persistente** | Uso do **Redis List/LPUSH** para fila persistente, garantindo a **não-perda de mensagens** (Garantia de Entrega). |
-| **Lógica/IA** | **LLM Agents (Tool Calling)** | Implementação de Agentes LLM (Groq/Llama3) usando o padrão **Tool Calling**. Agentes especializados são roteados por intenção. |
+| **Lógica/IA** | **LLM Agents (Tool Calling)** | Implementação de Agentes LLM usando **Short-Circuiting** para **retorno direto de ações finalizadas**, minimizando o consumo de tokens e a latência. |
 | **Lógica/Segurança** | **Gestão de Sessão (LGPD)** | Gerencia o estado de sessão para **forçar o fluxo de consentimento LGPD** e controlar o diálogo de agendamento. |
 | **Qualidade** | **Observabilidade (Ready)** | Infraestrutura pronta com **Prometheus** e **Grafana** para coletar métricas do Go Gateway e Worker Python. |
 
@@ -43,16 +43,17 @@ A arquitetura assíncrona permite o **escalamento horizontal imediato** dos Work
 
 ## Roadmap de Agentes e Próximos Passos
 
-O projeto está focado em consolidar a funcionalidade completa da IA antes de instrumentar a observabilidade.
+O projeto está com todos os Agentes LLM em produção, focando agora na instrumentação de métricas.
 
-### 1. Agentes LLM (Foco Atual)
+### 1. Agentes LLM (Em Produção)
 
 | Agente | Status | Descrição |
 | :--- | :--- | :--- |
 | **Agente de Registro** | ✅ Funcional | Gerencia o fluxo de consentimento LGPD e registra o nome do usuário. |
-| **Agente Roteador** | ✅ Funcional | Detecta a intenção do usuário e direciona para o agente especializado. |
-| **Agente de Agendamento/Verificação** | ✅ Funcional | Gerencia a verificação de horários disponíveis e a marcação de novas consultas no Google Calendar (requer Tool Calling). |
-| **Agente de Consulta/Cancelamento** | ✅ Funcional | Consultará consultas existentes e executará o cancelamento. |
+| **Agente Roteador** | ✅ Otimizado | Detecta a intenção e direciona. **Foi refatorado para ser puramente um roteador** (Go-way: responsabilidade única). |
+| **Agente de Agendamento/Verificação** | ✅ Funcional | Gerencia a verificação de horários e a marcação de consultas. Otimizado com **Short-Circuiting** para saída rápida. |
+| **Agente de Informação** | ✅ Funcional | Agente dedicado a fornecer informações institucionais (endereço, horário, valores), reduzindo o escopo do Roteador. |
+| **Agente de Consulta/Cancelamento** | ✅ Funcional | Consultará consultas existentes e executará o cancelamento. **Implementa Short-Circuiting** para retorno direto da ação final. |
 
 ### 2. Observabilidade (Próxima Fase)
 
