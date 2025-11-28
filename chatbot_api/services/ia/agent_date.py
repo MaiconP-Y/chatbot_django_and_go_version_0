@@ -167,8 +167,7 @@ class Agent_date():
                         
                                 return (f"""{REROUTE_COMPLETED_STATUS}|Agendamento Confirmado, {user_name}
 Sua consulta foi marcada com sucesso para o dia *{data_formatada}* às {hora_formatada}.
-Fique tranquilo(a), enviaremos um lembrete próximo ao dia do evento.
-"""
+Fique tranquilo(a), enviaremos um lembrete próximo ao dia do evento."""
                                 )
                             
                             
@@ -214,8 +213,7 @@ Fique tranquilo(a), enviaremos um lembrete próximo ao dia do evento.
                                 
                                 return (f"""Os Horários disponíveis em *{data_formatada}*:
 {slots_str}
-Qual horário deseja agendar?
-                                """
+Qual horário deseja agendar?"""
                                 )         
                         else:
                             error_message = resultado_tool.get('message', 'Erro desconhecido ao verificar horários.')

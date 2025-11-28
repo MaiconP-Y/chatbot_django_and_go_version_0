@@ -3,6 +3,8 @@ import json
 from groq import Groq
 from chatbot_api.services.services_agents.service_register import enviar_dados_user
 from chatbot_api.services.services_agents.prompts_agents import prompt_register
+from chatbot_api.services.redis_client import delete_history, delete_session_state
+from chatbot_api.services.services_agents.tool_reset import REROUTE_COMPLETED_STATUS
 
 groq_service = Groq()
 
@@ -86,9 +88,12 @@ class Agent_register():
                     
                     registration_result = function_to_call(**function_args) 
                     if registration_result: 
-                        tool_content = (
-                            f"SUCESSO: Usuário registrado. O nome dele é {registration_result.username}. "
-                            "Gere a mensagem de boas-vindas: 'Cadastro realizado com sucesso! Seja bem-vindo (chame-o pelo nome). Como posso te ajudar hoje?'"
+                        nome_usuario = registration_result.username
+                        delete_history(chat_id)
+                        delete_session_state(chat_id)
+                        
+                        return (f"""{REROUTE_COMPLETED_STATUS}|Cadastro realizado com sucesso! Seja
+bem vindo {nome_usuario}! Como posso te ajudar hoje?"""
                         )
                     else:
                         tool_content = "FALHA: Usuário já existe ou erro no banco de dados. Informe o usuário."                   
