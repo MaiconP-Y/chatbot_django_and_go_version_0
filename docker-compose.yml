@@ -79,6 +79,21 @@ services:
       - .:/app
     restart: unless-stopped
     command: python workers/whatsapp_worker.py
+  
+  reminder-worker:
+    build: . # Assume que usa o mesmo Dockerfile base
+    container_name: reminder_worker_service
+    depends_on:
+      - db
+      - redis # O lembrete usa o Redis (DB 1)
+    environment:
+      # Inclua variáveis de ambiente necessárias para o Google Calendar
+      GOOGLE_CREDENTIALS_PATH: ${GOOGLE_CREDENTIALS_PATH}
+      GOOGLE_CALENDAR_ID: ${GOOGLE_CALENDAR_ID}
+    env_file:
+      - .env
+    command: python -m workers.lembretes.lembrets # <--- COMANDO CORRETO
+    # Se você tem um diretório 'workers/lembretes' para o lembrets.py
 
   waha:
     container_name: waha

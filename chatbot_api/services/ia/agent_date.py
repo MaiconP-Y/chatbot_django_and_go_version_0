@@ -143,6 +143,7 @@ class Agent_date():
                         
                     elif function_name == "agendar_consulta_1h":
                         function_args['chat_id'] = chat_id
+                        function_args['name'] = user_name
                         
                         LIMITE_AGENDAMENTOS_MSG = "Limite de agendamentos atingido. Você pode ter no máximo 2 consultas ativas."
 

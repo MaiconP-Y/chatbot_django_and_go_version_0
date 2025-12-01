@@ -202,6 +202,7 @@ class ServicesCalendar:
         service, 
         start_time_str: str, 
         chat_id: str,
+        name: str,
         summary: str = None, 
         time_zone: str = 'America/Sao_Paulo'
     ):
@@ -229,7 +230,7 @@ class ServicesCalendar:
         end_time_str = end_dt.isoformat()
 
         # 4. Define o Summary usando o chat_id (conforme solicitação do usuário)
-        final_summary = f"Consulta Agendada (1h) - Cliente ID: {chat_id}"
+        final_summary = f"CONSUL Nome:{name} - Cliente ID:{chat_id}"
 
 
         # Estrutura do evento (sem localização e descrição)

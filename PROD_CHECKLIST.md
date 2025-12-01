@@ -38,7 +38,7 @@ Um Bind Mount do diretório raiz do Host (`.`) para o diretório de trabalho do 
 **Por que Remover (Prod)**
 **SEGURANÇA E PERFORMANCE**. Em produção, o código deve ser copiado para a imagem Docker (`COPY . /app` no Dockerfile) e não montado a partir de um diretório externo. Montar o código do host em produção cria riscos de permissão e pode expor arquivos sensíveis do Host.
 
-**Ação em Produção**: O volume `- .:/app` deve ser removido do `docker-compose.yml`, dependendo da sua estratégia de deploy (conforme listado no `PROD_CHECKLIST.md`).
+**Ação em Produção**: O volume `- .:/app` deve ser removido do `docker-compose.yml`, dependendo da sua estratégia de deploy.
 
 ## 2. O Arquivo de Configuração: `./nginx.conf:ro` (MANTER em Produção)
 
