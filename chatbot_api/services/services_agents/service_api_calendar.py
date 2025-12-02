@@ -164,7 +164,7 @@ class ServicesCalendar:
         try:
             # 1. Validação de data
             try:
-                data_obj = datetime.strptime(data, "%Y-%m-%d")
+                data_date_obj = datetime.strptime(data, "%Y-%m-%d").date() # ALTERAÇÃO: data_date_obj
             except ValueError:
                 return {"status": "ERROR", "message": f"Formato inválido para a data: '{data}'.  Use 'YYYY-MM-DD'. "}
 
@@ -173,7 +173,7 @@ class ServicesCalendar:
             if not validacao['valid']:
                 return {"status": "ERROR", "message": validacao['mensagem']}
 
-            data_formatada = data_obj.strftime("%d-%m-%Y")
+            data_formatada = data_date_obj.strftime("%d-%m-%Y")
             mensagem_erro = validar_dia(data_formatada)
             if mensagem_erro:
                 return {"status": "ERROR", "message": mensagem_erro}
@@ -194,12 +194,38 @@ class ServicesCalendar:
             # 4.  Extrai os blocos ocupados
             busy_blocks = freebusy_response.get('calendars', {}).get(calendar_id, {}).get('busy', [])
             
-            # 5. Gera todos os slots possíveis e filtra
+            # 5. Gera todos os slots possíveis
             horarios = gerar_horarios_disponiveis() 
-            livres = [
-                h for h in horarios 
-                if not is_slot_busy(h, busy_blocks, data, duracao_minutos)
-            ]
+            livres = []
+            
+            # --- INÍCIO DA MUDANÇA: Safety Margin (30 minutos) ---
+            hoje = datetime.now(BR_TIMEZONE).date()
+            now_with_margin = datetime.now(BR_TIMEZONE) + timedelta(minutes=30)
+            past_margin_passed = False # ⬅️ NOVO: Flag de otimização
+            
+            for h in horarios:
+                is_busy = is_slot_busy(h, busy_blocks, data, duracao_minutos)
+                
+                if not is_busy:
+                    if data_date_obj == hoje:
+                        
+                        # --- Otimização: Se já passou do limite de 30 minutos, não precisa comparar novamente ---
+                        if past_margin_passed:
+                            livres.append(h)
+                            continue # Vai para o próximo 'h'
+
+                        # Cria objeto datetime para o slot (com timezone)
+                        slot_dt = datetime.strptime(f"{data}T{h}:00", "%Y-%m-%dT%H:%M:%S").replace(tzinfo=BR_TIMEZONE)
+                        
+                        # ⚠️ VALIDAÇÃO 2 (Safety Margin): Verifica se está à frente dos 30 minutos
+                        if slot_dt >= now_with_margin:
+                            livres.append(h)
+                            past_margin_passed = True # ⬅️ Define a flag para True
+                    
+                    else:
+                        # Para datas futuras, todos os horários livres são válidos
+                        livres.append(h)
+
 
             if not livres:
                 return {"status": "SUCCESS", "available_slots": [], "message": f"Não há horários disponíveis para {data}. "}

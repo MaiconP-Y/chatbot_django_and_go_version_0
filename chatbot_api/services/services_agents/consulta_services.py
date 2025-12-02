@@ -181,13 +181,13 @@ class ConsultaService:
                         detalhes=f"Erro ao cancelar no Google: {resp_google. get('message', 'Desconhecido')}"
                     )
                     return f"Erro ao cancelar no Google Calendar: {resp_google['message']}"
-
+                local_dt = timezone.localtime(appointment_datetime)
                 registrar_evento(
                     cliente_id=chat_id,
                     event_id=event_id_to_cancel,
                     tipo_metrica='cancelamento',
                     status='success',
-                    detalhes=f"Cancelamento da consulta agendada para {appointment_datetime.strftime('%d/%m/%Y às %H:%M')}"
+                    detalhes=f"Cancelamento da consulta agendada para {local_dt.strftime('%d/%m/%Y às %H:%M')}"
                 )
                 
                 logger.info(f"✅ Cancelamento registrado - Cliente: {chat_id}, Slot: {numero_consulta}")
