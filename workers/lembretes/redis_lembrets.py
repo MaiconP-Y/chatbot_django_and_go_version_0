@@ -27,11 +27,10 @@ def lembrete_ja_enviado(event_id, ttl_seconds):
     :return: True se já foi enviado, False se é o primeiro envio
     """
     r = get_lembrete_redis_client()
-    
-    # TTL recebido como parâmetro
+
     enviado = r.set(f"lembrete_enviado:{event_id}", 1, nx=True, ex=ttl_seconds)
     
     if enviado is not None:
         logger.info(f"🔑 Chave de lembrete criada para {event_id} com TTL de {ttl_seconds}s ({(ttl_seconds/3600):.2f}h).")
         
-    return enviado is None # True se já existia, False se foi criado agora
+    return enviado is None

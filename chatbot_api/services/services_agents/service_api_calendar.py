@@ -4,13 +4,10 @@ from datetime import datetime, timedelta, timezone
 import logging
 
 # --- IMPORTAÇÕES NECESSÁRIAS PARA O GOOGLE API ---
-# Em um ambiente real, você precisa dessas bibliotecas:
-# pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
 try:
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
 except ImportError:
-    # Mocks para o ambiente onde as libs não estão instaladas
     logging.warning("Bibliotecas Google API não encontradas. Usando mocks para compilação.")
     class service_account:
         @staticmethod
@@ -18,10 +15,41 @@ except ImportError:
     def build(): pass
 
 BR_TIMEZONE = timezone(timedelta(hours=-3))
-# Configuração de Log
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging. INFO)
 
-# --- DEPENDÊNCIAS FALTANTES/MOCADAS ---
+# ═══════════════════════════════════════════════════════════════════════════════
+# VALIDAÇÃO DE DATA
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def validar_data_nao_passada(data_str: str) -> dict:
+    """
+    Valida se a data não é no passado.
+    
+    :param data_str: Data no formato YYYY-MM-DD
+    :return: {'valid': True} ou {'valid': False, 'mensagem': 'erro'}
+    """
+    try:
+        data_obj = datetime.strptime(data_str, "%Y-%m-%d"). date()
+        hoje = datetime.now(BR_TIMEZONE).date()
+        
+        if data_obj < hoje:
+            return {
+                'valid': False,
+                'mensagem': f"❌ A data {data_obj. strftime('%d/%m/%Y')} é no passado. Escolha uma data futura."
+            }
+        
+        return {'valid': True}
+        
+    except ValueError:
+        return {
+            'valid': False,
+            'mensagem': f"❌ Formato de data inválido: '{data_str}'. Use YYYY-MM-DD."
+        }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DEPENDÊNCIAS
+# ═══════════════════════════════════════════════════════════════════════════════
+
 class ToolException(Exception):
     """Exceção customizada para erros de ferramenta."""
     pass
@@ -30,13 +58,13 @@ def validar_dia(data_formatada: str) -> str | None:
     """Função mock para simular a validação se o dia é útil/válido (ex: não é feriado)."""
     return None
 
-def gerar_horarios_disponiveis() -> list[str]:
+def gerar_horarios_disponiveis() -> list:
     """
-    Gera uma lista de slots de 60 minutos (HH:MM) dentro do horário de trabalho (7:00h às 19:00h).
+    Gera uma lista de slots de 60 minutos (HH:MM) dentro do horário de trabalho (7:00h às 20:00h).
     """
     horarios = []
     start_time = datetime.strptime("07:00", "%H:%M")
-    end_time = datetime.strptime("20:00", "%H:%M")
+    end_time = datetime. strptime("20:00", "%H:%M")
     
     current_time = start_time
     while current_time < end_time:
@@ -47,40 +75,27 @@ def gerar_horarios_disponiveis() -> list[str]:
 
 def is_slot_busy(slot_time_str: str, busy_blocks: list, data: str, duration_minutos: int) -> bool:
     """Verifica se o slot de agendamento (HH:MM) se sobrepõe a qualquer bloco ocupado."""
-    # Assume fuso -03:00 para consistência
-    
-    # Tentativa de criar datetime com o offset, se a biblioteca `zoneinfo` não estiver disponível.
-    # O fuso aqui deve ser o mesmo usado na chamada freebusy, que é 'America/Sao_Paulo' (-03:00)
-    #slot_start_naive = datetime.strptime(f"{data}T{slot_time_str}:00", "%Y-%m-%dT%H:%M:%S")
-    
-    slot_start_dt = datetime.strptime(f"{data}T{slot_time_str}:00", "%Y-%m-%dT%H:%M:%S").replace(tzinfo=BR_TIMEZONE)
+    slot_start_dt = datetime.strptime(f"{data}T{slot_time_str}:00", "%Y-%m-%dT%H:%M:%S"). replace(tzinfo=BR_TIMEZONE)
     
     slot_end_dt = slot_start_dt + timedelta(minutes=duration_minutos)
     
     for block in busy_blocks:
         try:
-            # O horário retornado pela API FreeBusy JÁ ESTÁ em formato ISO 8601 com Z (UTC) ou offset.
             busy_start_dt = datetime.fromisoformat(block['start'])
             busy_end_dt = datetime.fromisoformat(block['end'])
         except ValueError:
             continue 
 
-        # Condição de sobreposição: [Start1 < End2] AND [End1 > Start2]
         if slot_start_dt < busy_end_dt and slot_end_dt > busy_start_dt:
             return True
             
     return False
 
-
 # --- CONFIGURAÇÃO DO GOOGLE CALENDAR ---
-# Variáveis de ambiente
 GOOGLE_CALENDAR_ID = os.environ.get('GOOGLE_CALENDAR_ID', 'maiconwantuil@gmail.com')
-# O escopo necessário para ler a disponibilidade e criar eventos
 CALENDAR_SCOPE = ['https://www.googleapis.com/auth/calendar'] 
-# Caminho para o arquivo JSON de credenciais
 GOOGLE_CREDENTIALS_PATH = os.environ.get('GOOGLE_CREDENTIALS_PATH', 'caminho/para/o/seu-arquivo-de-credenciais.json')
 calendar_id = GOOGLE_CALENDAR_ID 
-
 
 class ServicesCalendar:
     
@@ -99,13 +114,11 @@ class ServicesCalendar:
         logging.info(f"Tentando inicializar serviço com arquivo em: {GOOGLE_CREDENTIALS_PATH}")
         
         try:
-            # Carrega as credenciais a partir do arquivo JSON
-            credentials = service_account.Credentials.from_service_account_file(
+            credentials = service_account.Credentials. from_service_account_file(
                 GOOGLE_CREDENTIALS_PATH, 
                 scopes=CALENDAR_SCOPE
             )
             
-            # Constrói o objeto de serviço
             ServicesCalendar.service = build('calendar', 'v3', credentials=credentials)
             logging.info("Serviço do Google Calendar inicializado com sucesso.")
             return True
@@ -113,16 +126,14 @@ class ServicesCalendar:
         except Exception as e:
             logging.error(f"ERRO DE INICIALIZAÇÃO E AUTENTICAÇÃO: {e}")
             logging.error("Verifique se o GOOGLE_CREDENTIALS_PATH e o arquivo JSON estão corretos.")
-            # Retorna False para indicar falha na inicialização
             return False
 
     @staticmethod
     def buscar_eventos_do_dia(service, data: str) -> list:
         """
-        Busca todos os eventos ocupados no dia especificado (Método events().list()).
+        Busca todos os eventos ocupados no dia especificado (Método events(). list()). 
         Mantido para fins de teste de eventos brutos, mas freebusy é preferível.
         """
-        # ... (Implementação de buscar_eventos_do_dia - Sem alteração)
         try:
             time_min = f'{data}T07:00:00-03:00'
             time_max = f'{data}T20:00:00-03:00'
@@ -139,33 +150,39 @@ class ServicesCalendar:
         except Exception as e:
             return []
 
-
     @staticmethod
     def buscar_horarios_disponiveis(service, data: str, duracao_minutos: int = 60):
         """
-        Calcula os horários disponíveis (livres) usando o endpoint freebusy do Google.
+        Calcula os horários disponíveis (livres) usando o endpoint freebusy do Google. 
+        
+        ⚠️ VALIDA SE A DATA NÃO É NO PASSADO ANTES DE BUSCAR! 
         
         Retorna um dicionário estruturado:
         - Sucesso: {'status': 'SUCCESS', 'available_slots': ['07:00', '08:00', ...]}
-        - Erro:    {'status': 'ERROR', 'message': 'Mensagem de erro detalhada.'}
+        - Erro:    {'status': 'ERROR', 'message': 'Mensagem de erro detalhada. '}
         """
         try:
             # 1. Validação de data
             try:
                 data_obj = datetime.strptime(data, "%Y-%m-%d")
             except ValueError:
-                return {"status": "ERROR", "message": f"Formato inválido para a data: '{data}'. Use 'YYYY-MM-DD'."}
+                return {"status": "ERROR", "message": f"Formato inválido para a data: '{data}'.  Use 'YYYY-MM-DD'. "}
+
+            # ⚠️ VALIDAÇÃO: Data não pode ser no passado
+            validacao = validar_data_nao_passada(data)
+            if not validacao['valid']:
+                return {"status": "ERROR", "message": validacao['mensagem']}
 
             data_formatada = data_obj.strftime("%d-%m-%Y")
             mensagem_erro = validar_dia(data_formatada)
             if mensagem_erro:
                 return {"status": "ERROR", "message": mensagem_erro}
 
-            # 2. Definição do intervalo de tempo (07:00 a 20:00)
+            # 2.  Definição do intervalo de tempo (07:00 a 20:00)
             time_min = f'{data}T07:00:00-03:00'
             time_max = f'{data}T20:00:00-03:00'
             
-            # 3. CHAMADA AO FREEBUSY
+            # 3.  CHAMADA AO FREEBUSY
             query_body = {
                 "timeMin": time_min,
                 "timeMax": time_max,
@@ -174,7 +191,7 @@ class ServicesCalendar:
 
             freebusy_response = service.freebusy().query(body=query_body).execute()
             
-            # 4. Extrai os blocos ocupados
+            # 4.  Extrai os blocos ocupados
             busy_blocks = freebusy_response.get('calendars', {}).get(calendar_id, {}).get('busy', [])
             
             # 5. Gera todos os slots possíveis e filtra
@@ -185,7 +202,7 @@ class ServicesCalendar:
             ]
 
             if not livres:
-                return {"status": "SUCCESS", "available_slots": [], "message": f"Não há horários disponíveis para {data}."}
+                return {"status": "SUCCESS", "available_slots": [], "message": f"Não há horários disponíveis para {data}. "}
 
             # Retorno estruturado de sucesso
             return {"status": "SUCCESS", "available_slots": livres}
@@ -195,7 +212,6 @@ class ServicesCalendar:
         except Exception as e:
             logging.error(f"Erro inesperado no cálculo de disponibilidade (freebusy): {e}")
             return {"status": "ERROR", "message": f"Erro inesperado ao buscar horários disponíveis: {e}"}
-
 
     @staticmethod
     def criar_evento(
@@ -220,18 +236,17 @@ class ServicesCalendar:
             # 1. Converte a string de início em objeto datetime
             start_dt = datetime.fromisoformat(start_time_str)
         except ValueError:
-            return {"status": "ERROR", "message": f"Formato inválido para start_time_str: '{start_time_str}'. Use o formato ISO 8601 completo (e.g., 'YYYY-MM-DDTHH:MM:SS-03:00')."}
+            return {"status": "ERROR", "message": f"Formato inválido para start_time_str: '{start_time_str}'.  Use o formato ISO 8601 completo (e.g., 'YYYY-MM-DDTHH:MM:SS-03:00')."}
 
-        # 2. Define a duração de 60 minutos
+        # 2.  Define a duração de 60 minutos
         DURACAO_MINUTOS = 60
         end_dt = start_dt + timedelta(minutes=DURACAO_MINUTOS)
         
-        # 3. Formata o horário de término para a API
+        # 3.  Formata o horário de término para a API
         end_time_str = end_dt.isoformat()
 
         # 4. Define o Summary usando o chat_id (conforme solicitação do usuário)
         final_summary = f"CONSUL Nome:{name} - Cliente ID:{chat_id}"
-
 
         # Estrutura do evento (sem localização e descrição)
         event_body = {
@@ -285,7 +300,7 @@ class ServicesCalendar:
             
         try:
             service.events().delete(
-                calendarId=calendar_id, # Variável global definida no topo do arquivo original
+                calendarId=calendar_id,
                 eventId=event_id
             ).execute()
             

@@ -1,12 +1,15 @@
 import os
 import json 
 from groq import Groq
-from chatbot_api.services.services_agents.tool_reset import finalizar_user, REROUTE_COMPLETED_STATUS
+from chatbot_api.services.services_agents. tool_reset import finalizar_user, REROUTE_COMPLETED_STATUS
 from chatbot_api.services.services_agents.prompts_agents import prompt_date
-from chatbot_api.services.services_agents.service_api_calendar import ServicesCalendar
-from chatbot_api.services.services_agents.consulta_services import ConsultaService
+from chatbot_api.services. services_agents.service_api_calendar import ServicesCalendar, validar_data_nao_passada
+from chatbot_api. services.services_agents.consulta_services import ConsultaService
 from chatbot_api.services.redis_client import delete_history, delete_session_state
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 groq_service = Groq()
 services_calendar = ServicesCalendar()
@@ -16,13 +19,13 @@ REGISTRATION_TOOL_SCHEMA = [
         "type": "function", 
         "function": {
             "name": "finalizar_user",
-            "description": "Função utilizada para resetar seção. Deve ser chamada se o usuário pedir para cancelar o agendamento ou começar do zero.",
+            "description": "Função utilizada para resetar seção.  Deve ser chamada se o usuário pedir para cancelar o agendamento ou começar do zero.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "chat_id": {
                         "type": "string",
-                        "description": "O ID único do chat/usuário do WhatsApp. Essencial para o registro."
+                        "description": "O ID único do chat/usuário do WhatsApp.  Essencial para o registro."
                     },
                     "history_str": { 
                         "type": "string",
@@ -37,13 +40,13 @@ REGISTRATION_TOOL_SCHEMA = [
         "type": "function", 
         "function": {
             "name": "ver_horarios_disponiveis",
-            "description": "Verifica os horários disponíveis de 60 minutos para o dia em específico. Retorna uma lista de strings HH:MM ou uma mensagem de erro.",
+            "description": "Verifica os horários disponíveis de 60 minutos para o dia em específico.  Retorna uma lista de strings HH:MM ou uma mensagem de erro.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "data": {
                         "type": "string",
-                        "description": "A data fornecida pelo usuário, formatada obrigatoriamente como YYYY-MM-DD. Ex: 2025-11-20"
+                        "description": "A data fornecida pelo usuário, formatada obrigatoriamente como YYYY-MM-DD.  Ex: 2025-11-20"
                     }
                 },
                 "required": ["data"] 
@@ -54,7 +57,7 @@ REGISTRATION_TOOL_SCHEMA = [
         "type": "function", 
         "function": {
             "name": "agendar_consulta_1h",
-            "description": "Cria um novo evento de 1 hora na agenda. Esta função DEVE ser chamada APENAS depois que a disponibilidade for verificada e o usuário escolher um horário.",
+            "description": "Cria um novo evento de 1 hora na agenda.  Esta função DEVE ser chamada APENAS depois que a disponibilidade for verificada e o usuário escolher um horário.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -80,12 +83,12 @@ class Agent_date():
     """
     def __init__(self, router_agent_instance):
         try:
-            self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+            self.client = Groq(api_key=os.environ. get("GROQ_API_KEY"))
             ServicesCalendar.inicializar_servico()
-            self.calendar_services = ServicesCalendar()
+            self. calendar_services = ServicesCalendar()
             self.router_agent = router_agent_instance
         except Exception as e:
-            raise EnvironmentError("A variável GROQ_API_KEY não está configurada.") from e
+            raise EnvironmentError("A variável GROQ_API_KEY não está configurada. ") from e
     
     def generate_date(self, history_str: str, chat_id: str, user_name: str) -> str:
         """
@@ -104,12 +107,12 @@ class Agent_date():
         ]
         
         try:
-            chat_completion = self.client.chat.completions.create(
+            chat_completion = self.client.chat. completions.create(
                 messages=mensagens,
                 model="llama-3.3-70b-versatile",
                 tools=REGISTRATION_TOOL_SCHEMA, 
                 tool_choice="auto",
-                temperature=0.0 , 
+                temperature=0.0, 
             )
 
             response_message = chat_completion.choices[0].message
@@ -122,13 +125,13 @@ class Agent_date():
                     "finalizar_user": finalizar_user, 
                 }
                 
-                mensagens.append(response_message)
+                mensagens. append(response_message)
                 
                 for tool_call in response_message.tool_calls:
-                    function_name = tool_call.function.name
+                    function_name = tool_call.function. name
                     function_to_call = available_functions[function_name]
                     
-                    function_args = json.loads(tool_call.function.arguments)
+                    function_args = json.loads(tool_call.function. arguments)
 
                     if function_name in ["finalizar_user"]:
                         function_args['history_str'] = history_str
@@ -136,7 +139,7 @@ class Agent_date():
 
                         result_output = finalizar_user(**function_args)
                 
-                        if result_output.startswith(f"{REROUTE_COMPLETED_STATUS}|"):
+                        if result_output. startswith(f"{REROUTE_COMPLETED_STATUS}|"):
                             return result_output
                         
                         tool_content = result_output    
@@ -147,7 +150,7 @@ class Agent_date():
                         
                         LIMITE_AGENDAMENTOS_MSG = "Limite de agendamentos atingido. Você pode ter no máximo 2 consultas ativas."
 
-                        resultado_tool = function_to_call(ServicesCalendar.service, **function_args)
+                        resultado_tool = function_to_call(ServicesCalendar. service, **function_args)
                         
                         if isinstance(resultado_tool, dict) and resultado_tool.get("status") == "SUCCESS":
                             gcal_event_id = resultado_tool.get("event_id")
@@ -162,15 +165,14 @@ class Agent_date():
 
                                 dt_obj = datetime.fromisoformat(start_time_iso)
                                 data_formatada = dt_obj.strftime("%d/%m/%Y")
-                                hora_formatada = dt_obj.strftime("%H:%M")
+                                hora_formatada = dt_obj. strftime("%H:%M")
                                 delete_session_state(chat_id)
                                 delete_history(chat_id)
                         
                                 return (f"""{REROUTE_COMPLETED_STATUS}|Agendamento Confirmado, {user_name}
-Sua consulta foi marcada com sucesso para o dia *{data_formatada}* às {hora_formatada}.
+Sua consulta foi marcada com sucesso para o dia *{data_formatada}* às {hora_formatada}. 
 Fique tranquilo(a), enviaremos um lembrete próximo ao dia do evento."""
                                 )
-                            
                             
                             except ValueError as e:
                                 error_message = str(e)
@@ -180,7 +182,7 @@ Fique tranquilo(a), enviaremos um lembrete próximo ao dia do evento."""
                                         ServicesCalendar.service, 
                                         gcal_event_id
                                     )
-                                    return LIMITE_AGENDAMENTOS_MSG
+                                    return f"{REROUTE_COMPLETED_STATUS}|{LIMITE_AGENDAMENTOS_MSG}"
                                 else:
                                     tool_content = f"Erro no salvamento do DB: {error_message}"
                             
@@ -188,15 +190,22 @@ Fique tranquilo(a), enviaremos um lembrete próximo ao dia do evento."""
                                 tool_content = f"Erro desconhecido ao salvar agendamento: {str(e)}"
 
                         else:
-                            tool_content = f"Erro no agendamento: {resultado_tool.get('message', 'Erro desconhecido')}"
+                            tool_content = f"Erro no agendamento: {resultado_tool. get('message', 'Erro desconhecido')}"
                     
                     elif function_name == "ver_horarios_disponiveis":
+                        # ⚠️ VALIDAÇÃO: Data não pode ser no passado
+                        data = function_args.get("data")
+                        validacao = validar_data_nao_passada(data)
+                        
+                        if not validacao['valid']:
+                            # Retorna erro direto via REROUTE (sem buscar no Google)
+                            return f"{REROUTE_COMPLETED_STATUS}| Por favor insira uma data do futuro."
+                        
                         resultado_tool = ServicesCalendar.buscar_horarios_disponiveis(ServicesCalendar.service, **function_args)
                         
-                        if isinstance(resultado_tool, dict) and resultado_tool.get("status") == "SUCCESS":
+                        if isinstance(resultado_tool, dict) and resultado_tool. get("status") == "SUCCESS":
                             available_slots = resultado_tool.get("available_slots", [])
                             
-                            data = function_args.get("data")
                             try:
                                 data_formatada = datetime.strptime(data, "%Y-%m-%d").strftime("%d/%m/%Y")
                             except ValueError:
@@ -214,13 +223,12 @@ Fique tranquilo(a), enviaremos um lembrete próximo ao dia do evento."""
                                 
                                 return (f"""Os Horários disponíveis em *{data_formatada}*:
 {slots_str}
-Qual horário deseja agendar?"""
+Qual horário deseja agendar? """
                                 )         
                         else:
                             error_message = resultado_tool.get('message', 'Erro desconhecido ao verificar horários.')
-                            return f"❌ Falha ao verificar horários: {error_message}\n\nInforme uma nova data (AAAA-MM-DD)."
+                            return f"{REROUTE_COMPLETED_STATUS}|❌ Falha ao verificar horários: {error_message}\n\nInforme uma nova data (AAAA-MM-DD)."
         
-                    
                     mensagens.append(
                         {
                             "tool_call_id": tool_call.id,
@@ -230,7 +238,7 @@ Qual horário deseja agendar?"""
                         }
                     )
                     
-                final_completion = self.client.chat.completions.create(
+                final_completion = self.client.chat.completions. create(
                     model="llama-3.3-70b-versatile",
                     messages=mensagens 
                 )
@@ -240,5 +248,5 @@ Qual horário deseja agendar?"""
             return resposta_ia
             
         except Exception as e:
-            print(f"Erro ao chamar a API da Groq: {e}")
+            logger.error(f"Erro ao chamar a API da Groq: {e}")
             return "Desculpe, estou tendo problemas técnicos para responder agora."
