@@ -11,7 +11,36 @@ class Waha():
         self.__api_url = os.environ.get("WAHA_API_URL", "http://waha:3000")
         self.waha_api_chave = os.environ.get("WAHA_API_KEY")
         self.waha_instance = os.environ.get("WAHA_INSTANCE_KEY", "default")
+        
+    def __get_headers(self):
+        """Método auxiliar para obter cabeçalhos de forma consistente."""
+        return {
+            'Content-Type': 'application/json',
+            'X-Api-Key': self.waha_api_chave
+        }
 
+    def start_typing(self, chat_id: str):
+        """Envia o sinal 'digitando...' (typing) para o chat via WAHA API."""
+        url = f"{self.__api_url}/api/{self.waha_instance}/presence"
+        payload = {"chatId": chat_id, "presence": "typing"}
+        
+        try:
+            # Requisito de eficiência GoLang: Timeout curto (1s) para não travar o worker
+            requests.post(url, json=payload, headers=self.__get_headers(), timeout=1)
+        except Exception:
+            # Falha visual (typing) não deve gerar erro crítico
+            pass 
+
+    def stop_typing(self, chat_id: str):
+        """Envia o sinal 'pausado' (paused) para limpar o status 'digitando...'."""
+        url = f"{self.__api_url}/api/{self.waha_instance}/presence"
+        # 'paused' é o status correto para resetar o typing
+        payload = {"chatId": chat_id, "presence": "paused"}
+        
+        try:
+            requests.post(url, json=payload, headers=self.__get_headers(), timeout=1)
+        except Exception:
+            pass
     def send_whatsapp_message(self, chat_id, message):
         """ Envia uma mensagem de texto via API WAHA. """
         url = f"{self.__api_url}/api/sendText"

@@ -72,7 +72,14 @@ class WhatsAppWorker:
             history = get_recent_history(chat_id, limit=10)
             history_str = "\n".join(history)
             logger.info(f"{history_str}")
-            response = self.service_agent.router(history_str, chat_id)
+            self.service_waha.start_typing(chat_id) 
+            response = ""
+            try:
+                # 2. PROCESSO: Chamada ao Agente LLM (onde ocorre a latência/curto-circuito)
+                response = self.service_agent.router(history_str, chat_id)
+            finally:
+                # 3. FIM GARANTIDO: Para de digitar, seja qual for o resultado (sucesso, REROUTE ou falha)
+                self.service_waha.stop_typing(chat_id)
 
             if response.startswith(REROUTE_COMPLETED_STATUS):
                 _, final_bot_response = response.split('|', 1) 
