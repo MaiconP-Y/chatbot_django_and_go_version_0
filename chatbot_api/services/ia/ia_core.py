@@ -46,8 +46,8 @@ class agent_service():
                 user_name = get_user_name_from_db(chat_id)
                 if step_decode:
                     
-                    if step_decode == 'AGENT_MARC_CONFIRM':
-                        response = self.date_agent.generate_date(history_str, chat_id, user_name)
+                    if step_decode in ['AGENT_DATE_SEARCH', 'AGENT_DATE_CONFIRM']:
+                        response = self.date_agent.generate_date(step_decode, history_str, chat_id, user_name)
                     
                     elif step_decode == 'AGENT_CAN_VERIF':
                         response = self.agent_consul_cancel.generate_cancel(history_str, chat_id) 
@@ -56,8 +56,10 @@ class agent_service():
                 else: 
                     response = self.router_agent.route_intent(history_str, user_name)
                     if response == 'ativar_agent_marc':
-                        update_session_state(chat_id, registration_step='AGENT_MARC_CONFIRM')
-                        response = self.date_agent.generate_date(history_str, chat_id, user_name)
+                        # 🎯 NOVO ESTADO INICIAL: Começa na busca
+                        update_session_state(chat_id, registration_step='AGENT_DATE_SEARCH')
+                        # Passa o estado inicial para o agente
+                        response = self.date_agent.generate_date('AGENT_DATE_SEARCH', history_str, chat_id, user_name)
                         
                     elif response == 'ativar_agent_ver_cancel':
                         update_session_state(chat_id, registration_step='AGENT_CAN_VERIF')

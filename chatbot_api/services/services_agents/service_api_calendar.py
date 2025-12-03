@@ -162,6 +162,7 @@ class ServicesCalendar:
         - Erro:    {'status': 'ERROR', 'message': 'Mensagem de erro detalhada. '}
         """
         try:
+            
             # 1. Validação de data
             try:
                 data_date_obj = datetime.strptime(data, "%Y-%m-%d").date() # ALTERAÇÃO: data_date_obj
@@ -263,6 +264,45 @@ class ServicesCalendar:
             start_dt = datetime.fromisoformat(start_time_str)
         except ValueError:
             return {"status": "ERROR", "message": f"Formato inválido para start_time_str: '{start_time_str}'.  Use o formato ISO 8601 completo (e.g., 'YYYY-MM-DDTHH:MM:SS-03:00')."}
+            
+        # ═══════════════════════════════════════════════════════════════════════════
+        # 🛡️ VERIFICAÇÃO DE DISPONIBILIDADE DE ÚLTIMO SEGUNDO (NOVA LÓGICA)
+        # ═══════════════════════════════════════════════════════════════════════════
+        
+        # 1. Extrair Data e Hora para a verificação (YYYY-MM-DD e HH:MM)
+        data_str = start_dt.strftime("%Y-%m-%d")
+        hora_str = start_dt.strftime("%H:%M")
+
+        logging.info(f"🛡️ Iniciando verificação de disponibilidade de último segundo para: {data_str} às {hora_str}")
+
+        # 2. Chamar a função de busca de horários disponíveis
+        disponiveis = ServicesCalendar.buscar_horarios_disponiveis(
+            service=service, 
+            data=data_str, 
+            duracao_minutos=60 
+        )
+        
+        if disponiveis['status'] == 'ERROR':
+            # Se a busca falhou (ex: data inválida/passado), retornamos o erro
+            return disponiveis
+        
+        # 3. Verificar se o horário desejado está na lista de horários livres
+        available_slots = disponiveis.get('available_slots', [])
+        
+        if hora_str not in available_slots:
+            logging.warning(f"❌ Tentativa de agendamento em slot indisponível: {start_time_str}")
+            # Retorno de erro amigável para o Worker enviar ao usuário
+            return {
+                "status": "ERROR", 
+                "message": f"❌ O horário {hora_str} do dia {start_dt.strftime('%d/%m/%Y')} não está mais disponível (ou foi marcado há pouco). Por favor, escolha outro."
+            }
+            
+        logging.info(f"✅ Slot {start_time_str} confirmado como disponível.")
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # FIM DA VERIFICAÇÃO. PROSSEGUIR COM O AGENDAMENTO.
+        # ═══════════════════════════════════════════════════════════════════════════
+
 
         # 2.  Define a duração de 60 minutos
         DURACAO_MINUTOS = 60
@@ -340,3 +380,82 @@ class ServicesCalendar:
                 return {"status": "SUCCESS", "message": "Evento já não existia no Google Calendar."}
                 
             return {"status": "ERROR", "message": f"Erro ao deletar evento: {e}"}
+        
+    # service_api_calendar.py
+# ... (código existente da classe ServicesCalendar)
+
+    @staticmethod
+    def buscar_proximos_disponiveis(service, limite_slots: int = 3, duracao_minutos: int = 60) -> dict:
+        """
+        Implementa a estratégia de busca escalonada (4->10->30 dias) para encontrar os próximos slots livres.
+        
+        Retorna um dicionário:
+        - Sucesso: {'status': 'SUCCESS', 'available_slots': [{'iso_time': 'YYYY-MM-DDT...Z', 'legivel': 'DD/MM - HH:MM'}, ...]}
+        - Erro:    {'status': 'ERROR', 'message': 'Mensagem de erro detalhada.'}
+        """
+        if not service:
+            return {"status": "ERROR", "message": "Erro: Objeto de serviço do Google Calendar não inicializado."}
+
+        # 1. Definição das margens de busca (Estratégia Escalonada Go Way)
+        # Começa com 4 dias, depois expande para 10, e finalmente 30 dias.
+        margens_dias = [4, 10, 30] 
+        hoje = datetime.now(BR_TIMEZONE).date()
+        
+        slots_sugeridos = []
+        
+        # 2. Loop sobre as margens com Curto-Circuito
+        for margem in margens_dias:
+            logging.info(f"Iniciando busca flexível: Margem de +{margem} dias.")
+            
+            # Itera dia por dia dentro da margem (exclui o dia atual se já passou)
+            for i in range(margem):
+                data_atual = hoje + timedelta(days=i)
+                data_str = data_atual.strftime("%Y-%m-%d")
+                
+                # Reutiliza a função de busca por dia (Responsabilidade Única)
+                resultado = ServicesCalendar.buscar_horarios_disponiveis(
+                    service=service, 
+                    data=data_str, 
+                    duracao_minutos=duracao_minutos
+                )
+                
+                if resultado['status'] == 'SUCCESS':
+                    for hora in resultado['available_slots']:
+                        # Constrói o formato ISO 8601 completo (ESSENCIAL para a tool agendar_consulta_1h)
+                        # Assumindo BR_TIMEZONE como -03:00 para o agendamento
+                        data_hora_iso = f"{data_str}T{hora}:00-03:00"
+                        
+                        # Constrói a descrição legível para o usuário
+                        data_hr_obj = datetime.strptime(f"{data_str} {hora}", "%Y-%m-%d %H:%M")
+                        data_hr_legivel = data_hr_obj.strftime("%d/%m - %H:%M")
+                        
+                        slots_sugeridos.append({
+                            'iso_time': data_hora_iso,
+                            'legivel': data_hr_legivel
+                        })
+                        
+                        # Curto-circuito: Se o limite for atingido, retornamos imediatamente
+                        if len(slots_sugeridos) >= limite_slots:
+                            logging.info(f"Limite de {limite_slots} slots atingido na margem de {margem} dias.")
+                            return {
+                                "status": "SUCCESS", 
+                                "available_slots": slots_sugeridos
+                            }
+                            
+            # Se o loop da margem terminar e não tivermos o suficiente, passamos para a próxima margem
+
+        # 3. Retorno final (Se encontrou algo ou nada)
+        if slots_sugeridos:
+            return {
+                "status": "SUCCESS", 
+                # Mantém o padrão 'available_slots' para consistência
+                "available_slots": slots_sugeridos
+            }
+        else:
+            return {
+                "status": "SUCCESS", 
+                "available_slots": [],
+                "message": "Nenhum horário disponível foi encontrado nas próximas quatro semanas."
+            }
+        
+        
