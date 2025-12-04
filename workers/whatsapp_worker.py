@@ -59,6 +59,7 @@ class WhatsAppWorker:
             chat_id = message_data.get("from")
             message_text = message_data.get("body", "").strip()
             message_id = message_data.get("id")
+            message_type = message_data.get("_data", {}).get("type")
             
             if not message_id:
                 logger.warning("Payload sem message_id válido. Descartando (Ex: Notificação de leitura).")
@@ -67,6 +68,12 @@ class WhatsAppWorker:
             if not check_and_set_message_id(message_id):
                 logger.warning(f"⚠️ Duplicata ID: {message_id} descartada pelo Worker (SETNX falhou).")
                 return 
+            
+            if message_type != 'chat':
+                friendly_message = "Olá! Por favor, *envie sua mensagem como texto digitado* para que eu possa processá-la. Não consigo processar áudios, imagens, vídeos ou outros formatos no momento. Obrigado pela compreensão!"
+                self.service_waha.send_whatsapp_message(chat_id, friendly_message)
+                logger.info(f"Tipo de mensagem '{message_type}' detectado e rejeitado para {chat_id}. Worker finalizado.")
+                return
             
             add_message_to_history(chat_id, "User", message_text)
             history = get_recent_history(chat_id, limit=10)

@@ -19,7 +19,7 @@ TOOLS_CANCEL = [
                     "chat_id": { "type": "string", "description": "ID do usuário." },
                     "history_str": { "type": "string", "description": "Histórico para re-roteamento." },
                 },
-                "required": ["history_str", "chat_id"]
+                "required": []
             }
         }
     },

@@ -67,17 +67,8 @@ class agent_service():
                     elif response == 'ativar_agent_info':
                         response = self.agent_info.generate_info(history_str, user_name)
                     return response
-            else:
-                LGPD_MESSAGE = """Olá! Para prosseguir e usar o assistente, precisamos do seu nome completo para cadastro.
-Ao fornecer seu nome, você concorda que o utilizemos para fins de cadastro, atendimento (LGPD) e lembretes. 
-Caso deseje solicitar a exclusão de seus dados no futuro, envie um email para exclusao@seusistema.com.br."""
-
-                if not step_decode:
-                    update_session_state(chat_id, registration_step='WAITING_NAME')
-                    response = LGPD_MESSAGE
-                
-                elif step_decode == 'WAITING_NAME':
-                    response = self.registration_agent.generate_register(history_str, chat_id)
+            else:      
+                response = self.registration_agent.generate_register(history_str, chat_id)
 
             return response
             
