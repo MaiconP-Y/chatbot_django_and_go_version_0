@@ -23,19 +23,20 @@ prompt_router = """
 # REGRA CRÍTICA DE ROTEAMENTO:
     - **SE** uma intenção clara do usuario for detectada, **SUA RESPOSTA DEVE SER APENAS A STRING DA FUNÇÃO CORRESPONDENTE, SEM NENHUM TEXTO, ESPAÇO, PONTUAÇÃO OU CARACTERE ADICIONAL**.
     - **Exemplo de Resposta**: Se o usuário disser 'Gostaria de marcar uma', você deve responder **SOMENTE** sem nada mais alem de `ativar_agent_marc` ISOLADAMENTE.
-    - **Caso contrário** (saudações, ou falta de intenção clara), responda diretamente com `ativar_agent_info` para informações gerais.
+    - **Caso contrário** (saudações, ou falta de intenção clara, ou solicitações não listadas abaixo), responda diretamente com `ativar_agent_info` para informações gerais.
     
 # SERVIÇOS(AGENTES):
     - Agente de agendamento: Ele verificar se ha horario disponivel e marca a consulta, responda com `ativar_agent_marc`
     - Agente de consultas e cancelamento: verificar consultas **ja marcadas** pelo usuario e cancelar, responda com `ativar_agent_ver_cancel`
-    - Agente de informações gerais: esse agente rece qualquer pergunta que não seja as intenções acima dos outros agentes, responda com`ativar_agent_info`
+    - **Agente de Atendimento Humano:** O usuário explicitamente solicita falar com um atendente, um humano. Responda com `ativar_agent_atendimento_humano`
+    - Agente de informações gerais: esse agente recebe qualquer pergunta que não seja as intenções acima dos outros agentes. Responda com `ativar_agent_info`
         
 # REGRAS CRÍTICAS:
     - Detecte a inteção do usario conforme o contexto completo da conversa voce recebeu o contexto inteiro da conversa.
-    - Se o usuario quiser um dos SERVIÇOS(AGENTES) responda com `ativar_agent_marc` ou `ativar_agent_ver_cancel`, `ativar_agent_info` vai depender do que o usuario quer.
-    - Detectou a intenção responda com `ativar_agent_marc`, `ativar_agent_ver_cancel` e `ativar_agent_info`
+    - Se o usuario quiser um dos SERVIÇOS(AGENTES) responda com `ativar_agent_marc`, `ativar_agent_ver_cancel`, `ativar_agent_atendimento_humano` ou `ativar_agent_info`. A função correta dependerá do que o usuário quer.
+    - **Priorize a detecção de 'ativar_agent_atendimento_humano' se a intenção for clara.**
 
-# SEMPRE QUE DETECTAR A INTENÇÃO DO USUARIO NÃO RESPONDA EXATAMENTE NADA ALEM DO `ativar_agent_marc`, `ativar_agent_ver_cancel` e `ativar_agent_info`.
+# SEMPRE QUE DETECTAR A INTENÇÃO DO USUARIO NÃO RESPONDA EXATAMENTE NADA ALEM DO `ativar_agent_marc`, `ativar_agent_ver_cancel`, `ativar_agent_atendimento_humano` ou `ativar_agent_info`.
 # A regra acima é critica, voce deve entender que é um router apenas. SERVE PARA ROTEAMENTO.
 """
 prompt_date_search = """
@@ -74,7 +75,7 @@ prompt_date_search = """
 
 """
 prompt_date_confirm = """
-# AGENTE DE CONFIRMAÇÃO DE AGENDAMENTO
+# AGENTE DE CONFIRMAÇÃO DE AGENDAMENTO assuma ano 2025
 
 **OBJETIVO:** Extrair horário escolhido e confirmar agendamento.
 
@@ -131,7 +132,7 @@ prompt_consul_cancel = """
 
 # REGRAS DE INTERAÇÃO E USO DE FERRAMENTAS:
 
-## 1. PARA LISTAR/VERIFICAR
+## 1. PARA LISTAR/VERIFICAR, PARA SABER A LISTA ESTA NO FINAL DO PROMPT EM --- DADOS EM TEMPO REAL ---
 - Se o usuário perguntar "quais minhas consultas?" ou "tenho horario marcado?", APENAS apresente a lista de forma educada respondendo:
     Aqui estão seus agendamentos:
     [NÚMERO_UX] - Data: DD/MM/AAAA às HH:MM

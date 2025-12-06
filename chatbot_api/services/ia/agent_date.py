@@ -3,7 +3,7 @@ import json
 from groq import Groq
 from chatbot_api.services.services_agents. tool_reset import finalizar_user, REROUTE_COMPLETED_STATUS
 from chatbot_api.services.services_agents.prompts_agents import prompt_date_search, prompt_date_confirm
-from chatbot_api.services. services_agents.service_api_calendar import ServicesCalendar, validar_data_nao_passada
+from chatbot_api.services. services_agents.service_api_calendar import ServicesCalendar, validar_data_nao_passada, validar_dia_nao_domingo
 from chatbot_api. services.services_agents.consulta_services import ConsultaService
 from chatbot_api.services.redis_client import delete_history, delete_session_state, update_session_state
 from datetime import datetime
@@ -121,7 +121,7 @@ class Agent_date():
         try:
             self.client = Groq(api_key=os.environ. get("GROQ_API_KEY"))
             ServicesCalendar.inicializar_servico()
-            self. calendar_services = ServicesCalendar()
+            self.calendar_services = ServicesCalendar()
             self.router_agent = router_agent_instance
         except Exception as e:
             raise EnvironmentError("A variável GROQ_API_KEY não está configurada. ") from e
@@ -193,21 +193,13 @@ class Agent_date():
         Gera uma resposta da IA, usando a string do histórico completo como a última mensagem do usuário.
         Atua como roteador interno baseado no step_decode (estado atual).
         """
-        # 1. Roteamento de Prompt e Ferramentas (A LLM só recebe o que é relevante para o estado)
         if step_decode == AGENT_DATE_SEARCH:
             prompt_content = prompt_date_search
-            # Ferramentas: buscar horarios e finalizar (cancelar/resetar)
             tool_schema = REGISTRATION_TOOL_SCHEMA_SEARCH
 
         elif step_decode == AGENT_DATE_CONFIRM:
             prompt_content = prompt_date_confirm
-            # Ferramentas: agendar consulta e finalizar (cancelar/resetar)
             tool_schema = REGISTRATION_TOOL_SCHEMA_CONFIRM
-            
-        else:
-            # Estado desconhecido
-            return f"Erro interno: Estado de agendamento ({step_decode}) desconhecido. Por favor, tente novamente."
-
 
         mensagens = [
             {
@@ -224,7 +216,7 @@ class Agent_date():
             chat_completion = self.client.chat. completions.create(
                 messages=mensagens,
                 model="llama-3.3-70b-versatile",
-                tools=tool_schema, # 🎯 NOVO: Schema dinâmico
+                tools=tool_schema,
                 tool_choice="auto",
                 temperature=0.0, 
             )
@@ -260,12 +252,32 @@ class Agent_date():
                         tool_content = result_output    
                         
                     elif function_name == "agendar_consulta_1h":
-                        function_args['chat_id'] = chat_id
-                        function_args['name'] = user_name
+                        start_time_str = function_args.get("start_time_str")
                         
                         LIMITE_AGENDAMENTOS_MSG = "Limite de agendamentos atingido. Você pode ter no máximo 2 consultas ativas."
 
-                        resultado_tool = function_to_call(ServicesCalendar. service, **function_args)
+                        try:
+                            # Tenta extrair a data para validação
+                            start_dt = datetime.fromisoformat(start_time_str)
+                            data = start_dt.strftime("%Y-%m-%d")
+                        except ValueError:
+                            # Se o formato ISO for inválido
+                            tool_content = f"❌ Erro de formato de data: {start_time_str}"
+                            continue # Volta ao loop de tool_calls para o LLM responder
+
+                        validacao_passada = validar_data_nao_passada(data)
+                        if not validacao_passada['valid']:
+                            return f"{validacao_passada['mensagem']}"
+                        
+                        # 2. VALIDAÇÃO DE DOMINGO
+                        validacao_domingo = validar_dia_nao_domingo(data)
+                        if not validacao_domingo['valid']:
+                            return f"{validacao_domingo['mensagem']}"
+                        
+                        function_args['chat_id'] = chat_id
+                        function_args['name'] = user_name
+
+                        resultado_tool = function_to_call(ServicesCalendar.service, **function_args)
                         
                         if isinstance(resultado_tool, dict) and resultado_tool.get("status") == "SUCCESS":
                             gcal_event_id = resultado_tool.get("event_id")
@@ -291,7 +303,6 @@ Fique tranquilo(a), enviaremos um lembrete próximo ao dia do evento."""
                                 )
                             
                             except ValueError as e:
-                                # ... (Tratamento de erro de limite de agendamento) ...
                                 error_message = str(e)
                                 
                                 if LIMITE_AGENDAMENTOS_MSG in error_message:
@@ -307,34 +318,29 @@ Fique tranquilo(a), enviaremos um lembrete próximo ao dia do evento."""
                                 tool_content = f"Erro desconhecido ao salvar agendamento: {str(e)}"
 
                         else:
+                            # Se a Tool falhar (ex: indisponibilidade de último segundo)
                             tool_content = f"Erro no agendamento: {resultado_tool. get('message', 'Erro desconhecido')}"
 
-                    
-                    # 🎯 NOVO FLUXO: ver_horarios_disponiveis
                     elif function_name == "ver_horarios_disponiveis":
                         data = function_args.get("data")
-                        validacao = validar_data_nao_passada(data)
+                        validacao_passada = validar_data_nao_passada(data)
+                        if not validacao_passada['valid']:
+                            return f"{validacao_passada['mensagem']}"
                         
-                        if not validacao['valid']:
-                            return f"{REROUTE_COMPLETED_STATUS}|Por favor insira uma data do futuro."
+                        validacao_domingo = validar_dia_nao_domingo(data)
+                        if not validacao_domingo['valid']:
+                            return f"{validacao_domingo['mensagem']}"
                         
                         resultado_tool = ServicesCalendar.buscar_horarios_disponiveis(ServicesCalendar.service, **function_args)
-                        
-                        # ⚠️ CORREÇÃO 1: Tratar falha na Tool (resultado não é dict ou status não é SUCCESS)
+
                         if not (isinstance(resultado_tool, dict) and resultado_tool. get("status") == "SUCCESS"):
                             error_message = resultado_tool.get('message', 'Erro desconhecido ao verificar horários.')
                             return f"{REROUTE_COMPLETED_STATUS}|Falha ao verificar horários: {error_message}\n\nInforme uma nova data (AAAA-MM-DD)."
-                        
-                        # Se chegou aqui, o status é SUCCESS
+
                         available_slots = resultado_tool.get("available_slots", [])
+
+                        data_formatada = datetime.strptime(data, "%Y-%m-%d").strftime("%d/%m/%Y")
                         
-                        # CORREÇÃO 2: Definir data_formatada após validações
-                        try:
-                            # Converte YYYY-MM-DD para DD/MM/YYYY
-                            data_formatada = datetime.strptime(data, "%Y-%m-%d").strftime("%d/%m/%Y")
-                        except ValueError:
-                            # Caso a data não esteja no formato esperado, usa a string bruta
-                            data_formatada = data
                         
                         if not available_slots:
                                 # Retorno sem mudança de estado (continua SEARCH, pedindo nova data)

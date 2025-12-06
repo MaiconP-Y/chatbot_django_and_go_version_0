@@ -19,7 +19,14 @@ def finalizar_user(history_str: str, chat_id: str):
     print(history_str)
     try:    
         service_agent = agent_service()
-        response = service_agent.router(clean_context_for_router, chat_id)
+        
+        # 🎯 CHAMADA LIMPA: Passa step_decode=None (padrão) e o sinal de re-roteamento
+        response = service_agent.router(clean_context_for_router, chat_id, reroute_signal="__FORCE_ROUTE_INTENT__")
+        
+        if response == "Ok, solicitação detectada com sucesso. Um de nossos agentes entrará em contato com você em breve. A partir de agora, nosso bot LLM não processará mais suas mensagens.":
+             return response
+
+             
         if last_user_message_content:
             add_message_to_history(chat_id, "User", last_user_message_content) 
         final_bot_response = response.split('|', 1)[1] if response.startswith(REROUTE_COMPLETED_STATUS) else response

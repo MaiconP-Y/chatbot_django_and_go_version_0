@@ -181,3 +181,28 @@ class Waha():
                      return self.start_existing_session()
 
             return False # Falhou na configuração, aborta
+        
+    def send_support_contact(self, chat_id: str):
+        """
+        Envia APENAS o seu contato de suporte para o usuário.
+        Lê do .env ou usa o número fixo como fallback.
+        """
+        url = f"{self.__api_url}/api/sendContactVcard"
+        
+        # Variáveis sensíveis do .env ou seu número fixo
+        wa_id = os.environ.get("SUPORTE_WA_ID", "554399817467")
+        full_name = os.environ.get("SUPORTE_FULL_NAME", "Suporte Técnico")
+        
+        # Constrói o VCard único
+        vcard = f"BEGIN:VCARD\nVERSION:3.0\nFN:{full_name}\nTEL;type=CELL;waid={wa_id}:+{wa_id}\nEND:VCARD"
+
+        payload = {
+            "chatId": chat_id,
+            "contacts": [{"vcard": vcard}],
+            "session": self.waha_instance
+        }
+
+        try:
+            requests.post(url, headers=self.__get_headers(), json=payload, timeout=5)
+        except Exception as e:
+            logger.error(f"❌ Falha ao enviar contato de suporte: {e}")
